@@ -1,48 +1,123 @@
+"""
+Real market data via yfinance.
+Falls back to cached values if the network call fails so the algorithm
+never crashes during a fetch error.
+"""
+import logging
+from datetime import datetime, timedelta
+
+import yfinance as yf
+
 from models.market import MarketData
 
-# Mock market data — replace with real API (yfinance, Alpaca, Polygon, etc.)
-_MOCK: dict[str, dict] = {
-    "TSLA": dict(
-        price=238.40, previous_close=243.50, day_change_pct=-2.10,
-        price_change_5m_pct=-0.80, price_change_15m_pct=-1.30,
-        relative_volume=2.30, avg_daily_volume=95_000_000,
-        spread_pct=0.04, gap_pct=-1.70,
-        atr=2.25, atr_pct=0.94, vwap=239.85, vwap_distance_pct=-0.60,
-    ),
-    "NVDA": dict(
-        price=890.20, previous_close=870.00, day_change_pct=2.32,
-        price_change_5m_pct=0.45, price_change_15m_pct=1.10,
-        relative_volume=1.80, avg_daily_volume=60_000_000,
-        spread_pct=0.03, gap_pct=1.20,
-        atr=8.50, atr_pct=0.95, vwap=884.50, vwap_distance_pct=0.64,
-    ),
-    "AAPL": dict(
-        price=188.60, previous_close=186.20, day_change_pct=1.29,
-        price_change_5m_pct=0.20, price_change_15m_pct=0.55,
-        relative_volume=1.10, avg_daily_volume=55_000_000,
-        spread_pct=0.02, gap_pct=0.80,
-        atr=2.10, atr_pct=1.11, vwap=188.10, vwap_distance_pct=0.27,
-    ),
-    "META": dict(
-        price=512.00, previous_close=520.00, day_change_pct=-1.54,
-        price_change_5m_pct=-0.40, price_change_15m_pct=-0.90,
-        relative_volume=1.60, avg_daily_volume=20_000_000,
-        spread_pct=0.04, gap_pct=-0.50,
-        atr=9.20, atr_pct=1.80, vwap=514.50, vwap_distance_pct=-0.49,
-    ),
-    "AMD": dict(
-        price=162.40, previous_close=168.00, day_change_pct=-3.33,
-        price_change_5m_pct=-0.60, price_change_15m_pct=-1.20,
-        relative_volume=2.10, avg_daily_volume=45_000_000,
-        spread_pct=0.05, gap_pct=-2.10,
-        atr=4.10, atr_pct=2.53, vwap=164.20, vwap_distance_pct=-1.10,
-    ),
-}
+logger = logging.getLogger(__name__)
 
-_DEFAULT = "TSLA"
+# Last-known-good cache: ticker → MarketData
+_cache: dict[str, MarketData] = {}
+
+
+def _safe_float(val, default: float = 0.0) -> float:
+    try:
+        return float(val) if val is not None and val == val else default
+    except (TypeError, ValueError):
+        return default
 
 
 class MarketDataProvider:
     def get_market_data(self, ticker: str) -> MarketData:
-        raw = _MOCK.get(ticker.upper(), _MOCK[_DEFAULT])
-        return MarketData(ticker=ticker.upper(), **raw)
+        ticker = ticker.upper()
+        try:
+            data = self._fetch(ticker)
+            _cache[ticker] = data
+            return data
+        except Exception as exc:
+            logger.warning(f"[MarketData] yfinance failed for {ticker}: {exc} — using cache/defaults")
+            return _cache.get(ticker, self._defaults(ticker))
+
+    def _fetch(self, ticker: str) -> MarketData:
+        t = yf.Ticker(ticker)
+        info = t.fast_info
+
+        price        = _safe_float(getattr(info, "last_price",       None))
+        prev_close   = _safe_float(getattr(info, "previous_close",   None)) or price
+        day_chg_pct  = ((price - prev_close) / prev_close * 100) if prev_close else 0.0
+
+        # Intraday 5-min bars for short-term momentum and ATR
+        bars = t.history(period="1d", interval="5m")
+        price_5m_pct  = 0.0
+        price_15m_pct = 0.0
+        atr           = 0.0
+        vwap          = price
+
+        if len(bars) >= 4:
+            closes       = bars["Close"].values
+            price_5m_pct = (closes[-1] - closes[-2]) / closes[-2] * 100 if closes[-2] else 0.0
+            price_15m_pct= (closes[-1] - closes[-4]) / closes[-4] * 100 if closes[-4] else 0.0
+
+            highs  = bars["High"].values
+            lows   = bars["Low"].values
+            tr     = [max(h - l, abs(h - c), abs(l - c))
+                      for h, l, c in zip(highs[1:], lows[1:], closes[:-1])]
+            atr    = sum(tr[-14:]) / len(tr[-14:]) if tr else 0.0
+
+            typical = (bars["High"] + bars["Low"] + bars["Close"]) / 3
+            volumes  = bars["Volume"]
+            vwap     = float((typical * volumes).sum() / volumes.sum()) if volumes.sum() > 0 else price
+
+        avg_vol   = _safe_float(getattr(info, "three_month_average_volume", None))
+        day_vol   = _safe_float(getattr(info, "day_volume",                 None))
+        rel_vol   = (day_vol / avg_vol) if avg_vol > 0 else 1.0
+
+        open_price = _safe_float(getattr(info, "open",          None)) or price
+        gap_pct    = ((open_price - prev_close) / prev_close * 100) if prev_close else 0.0
+
+        atr_pct    = (atr / price * 100) if price > 0 else 0.0
+        vwap_dist  = ((price - vwap) / vwap * 100) if vwap > 0 else 0.0
+
+        return MarketData(
+            ticker=ticker,
+            price=round(price, 2),
+            previous_close=round(prev_close, 2),
+            day_change_pct=round(day_chg_pct, 2),
+            price_change_5m_pct=round(price_5m_pct, 3),
+            price_change_15m_pct=round(price_15m_pct, 3),
+            relative_volume=round(rel_vol, 2),
+            avg_daily_volume=int(avg_vol),
+            spread_pct=0.03,            # bid/ask spread not available via yfinance
+            gap_pct=round(gap_pct, 2),
+            atr=round(atr, 4),
+            atr_pct=round(atr_pct, 3),
+            vwap=round(vwap, 2),
+            vwap_distance_pct=round(vwap_dist, 3),
+        )
+
+    @staticmethod
+    def _defaults(ticker: str) -> MarketData:
+        return MarketData(
+            ticker=ticker,
+            price=0.0, previous_close=0.0, day_change_pct=0.0,
+            price_change_5m_pct=0.0, price_change_15m_pct=0.0,
+            relative_volume=1.0, avg_daily_volume=1_000_000,
+            spread_pct=0.05, gap_pct=0.0,
+            atr=0.0, atr_pct=0.0, vwap=0.0, vwap_distance_pct=0.0,
+        )
+
+
+def get_chart_data(ticker: str, period: str = "1d", interval: str = "5m") -> list[dict]:
+    """Return OHLCV bars for charting. Used by /api/chart/{ticker}."""
+    try:
+        bars = yf.Ticker(ticker.upper()).history(period=period, interval=interval)
+        result = []
+        for ts, row in bars.iterrows():
+            result.append({
+                "time":   ts.strftime("%H:%M") if period == "1d" else ts.strftime("%Y-%m-%d"),
+                "open":   round(float(row["Open"]),   2),
+                "high":   round(float(row["High"]),   2),
+                "low":    round(float(row["Low"]),    2),
+                "close":  round(float(row["Close"]),  2),
+                "volume": int(row["Volume"]),
+            })
+        return result
+    except Exception as exc:
+        logger.warning(f"[Chart] Failed for {ticker}: {exc}")
+        return []

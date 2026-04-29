@@ -78,3 +78,47 @@ export async function closePaperTrade(tradeId: string, exitReason: string): Prom
     body: JSON.stringify({ trade_id: tradeId, exit_reason: exitReason }),
   });
 }
+
+// ── Watchlist ─────────────────────────────────────────────────────────────────
+
+export type WatchlistEntry = {
+  ticker: string;
+  price: number | null;
+  day_change_pct: number | null;
+  volume: number | null;
+};
+
+/** GET /api/watchlist */
+export async function fetchWatchlist(): Promise<WatchlistEntry[]> {
+  return apiFetch<WatchlistEntry[]>("/api/watchlist");
+}
+
+/** POST /api/watchlist/:ticker */
+export async function addToWatchlist(ticker: string): Promise<{ watchlist: string[] }> {
+  return apiFetch(`/api/watchlist/${ticker.toUpperCase()}`, { method: "POST" });
+}
+
+/** DELETE /api/watchlist/:ticker */
+export async function removeFromWatchlist(ticker: string): Promise<{ watchlist: string[] }> {
+  return apiFetch(`/api/watchlist/${ticker.toUpperCase()}`, { method: "DELETE" });
+}
+
+// ── Chart data ────────────────────────────────────────────────────────────────
+
+export type OHLCVBar = {
+  time: string;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+};
+
+/** GET /api/chart/:ticker */
+export async function fetchChartData(
+  ticker: string,
+  period: "1d" | "5d" | "1mo" = "1d",
+  interval: "1m" | "5m" | "15m" | "1h" | "1d" = "5m",
+): Promise<OHLCVBar[]> {
+  return apiFetch<OHLCVBar[]>(`/api/chart/${ticker}?period=${period}&interval=${interval}`);
+}

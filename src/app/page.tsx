@@ -26,6 +26,8 @@ import { TradePlanPanel } from "@/components/dashboard/TradePlanPanel";
 import { ExitPlanPanel } from "@/components/dashboard/ExitPlanPanel";
 import { TradeHistoryPanel } from "@/components/dashboard/TradeHistoryPanel";
 import { PerformancePanel } from "@/components/dashboard/PerformancePanel";
+import { WatchlistPanel } from "@/components/dashboard/WatchlistPanel";
+import { PriceChartPanel } from "@/components/dashboard/PriceChartPanel";
 import { formatDate } from "@/lib/utils";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL;
@@ -146,7 +148,15 @@ export default function DashboardPage() {
           <ExitPlanPanel plan={displayDecision.exit_plan} />
         </div>
 
-        {/* ── Row 6: Trade history ── */}
+        {/* ── Row 6: Price chart + Watchlist ── */}
+        <div className="mb-4 grid grid-cols-1 gap-4 lg:grid-cols-3">
+          <div className="lg:col-span-2">
+            <PriceChartPanel ticker={displayDecision.ticker} />
+          </div>
+          <WatchlistPanel />
+        </div>
+
+        {/* ── Row 7: Trade history ── */}
         <div className="mb-4">
           <TradeHistoryPanel history={displayHistory} />
         </div>

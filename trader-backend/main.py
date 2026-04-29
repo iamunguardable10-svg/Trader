@@ -30,6 +30,7 @@ from evaluation.trade_logger import TradeLogger
 from evaluation.performance_tracker import PerformanceTracker
 from execution.paper_broker import PaperBroker
 from data.news_scheduler import NewsScheduler
+from data.market_data_provider import get_chart_data
 
 # ── singleton state (in-memory; swap for DB later) ──────────────────────────
 
@@ -215,6 +216,55 @@ def close_paper_trade(req: CloseTradeRequest):
     _portfolio.open_positions = len(paper_broker.open_positions)
     _portfolio.last_trade_was_loss = (result.get("pnl", 0) or 0) < 0
     return result
+
+
+# ── watchlist (in-memory) ─────────────────────────────────────────────────────
+
+from data.news_fetcher import WATCH_TICKERS as _DEFAULT_TICKERS
+
+_watchlist: list[str] = list(_DEFAULT_TICKERS)
+
+
+@app.get("/api/watchlist")
+def get_watchlist():
+    """Return all watched tickers with current price and day change."""
+    result = []
+    for ticker in _watchlist:
+        try:
+            md = mdp.get_market_data(ticker)
+            result.append({
+                "ticker":        md.ticker,
+                "price":         md.price,
+                "day_change_pct":md.day_change_pct,
+                "volume":        md.avg_daily_volume,
+            })
+        except Exception:
+            result.append({"ticker": ticker, "price": None, "day_change_pct": None, "volume": None})
+    return result
+
+
+@app.post("/api/watchlist/{ticker}")
+def add_to_watchlist(ticker: str):
+    t = ticker.upper()
+    if t not in _watchlist:
+        _watchlist.append(t)
+    return {"watchlist": _watchlist}
+
+
+@app.delete("/api/watchlist/{ticker}")
+def remove_from_watchlist(ticker: str):
+    t = ticker.upper()
+    if t in _watchlist:
+        _watchlist.remove(t)
+    return {"watchlist": _watchlist}
+
+
+# ── chart data ────────────────────────────────────────────────────────────────
+
+@app.get("/api/chart/{ticker}")
+def get_chart(ticker: str, period: str = "1d", interval: str = "5m"):
+    """Return OHLCV bars for charting. period: 1d|5d|1mo. interval: 1m|5m|15m|1h|1d."""
+    return get_chart_data(ticker, period, interval)
 
 
 # ── dev helpers ───────────────────────────────────────────────────────────────
