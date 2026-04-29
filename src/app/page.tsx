@@ -5,7 +5,7 @@ import { PerformanceData, TradeDecision, TradeHistoryEntry } from "@/types/trade
 import { mockDecision, mockDecisionLong, mockPerformance, mockTradeHistory } from "@/data/mockData";
 import { checkHealth, fetchLatestDecision, fetchTradeHistory, fetchPerformance } from "@/lib/api";
 import { Header } from "@/components/dashboard/Header";
-import { WatchlistPanel } from "@/components/dashboard/WatchlistPanel";
+import { WatchlistStrip } from "@/components/dashboard/WatchlistStrip";
 import { SignalsPanel } from "@/components/dashboard/SignalsPanel";
 import { TradeHistoryPanel } from "@/components/dashboard/TradeHistoryPanel";
 import { PerformancePanel } from "@/components/dashboard/PerformancePanel";
@@ -13,7 +13,6 @@ import { formatDate } from "@/lib/utils";
 
 const API_URL       = process.env.NEXT_PUBLIC_API_URL;
 const POLL_INTERVAL = 30_000;
-
 const MOCK_SIGNALS: TradeDecision[] = [mockDecisionLong, mockDecision];
 
 export default function DashboardPage() {
@@ -28,13 +27,9 @@ export default function DashboardPage() {
     const online = await checkHealth();
     setBackendOnline(online);
     if (!online) return;
-
     const [decResult, histResult, perfResult] = await Promise.allSettled([
-      fetchLatestDecision(),
-      fetchTradeHistory(),
-      fetchPerformance(),
+      fetchLatestDecision(), fetchTradeHistory(), fetchPerformance(),
     ]);
-
     if (decResult.status === "fulfilled" && decResult.value) {
       setLatestDecision(decResult.value);
       setLastRefreshed(new Date());
@@ -56,29 +51,17 @@ export default function DashboardPage() {
 
   return (
     <div className="min-h-screen bg-[#08080a] flex flex-col">
-      <Header
-        mode={latestDecision.mode}
-        lastUpdated={headerDate}
-        backendOnline={backendOnline}
-      />
+      <Header mode={latestDecision.mode} lastUpdated={headerDate} backendOnline={backendOnline} />
 
-      <div className="flex-1 mx-auto w-full max-w-screen-2xl px-4 py-6 md:px-6">
-        {/* ── Main two-column layout ── */}
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-[300px_1fr]">
+      <div className="flex-1 mx-auto w-full max-w-screen-xl px-4 py-6 md:px-6">
+        {/* Horizontal watchlist strip */}
+        <WatchlistStrip />
 
-          {/* Left: Watchlist */}
-          <aside className="lg:sticky lg:top-6 lg:self-start">
-            <WatchlistPanel />
-          </aside>
+        {/* All signals */}
+        <SignalsPanel fallbackSignals={API_URL ? [] : MOCK_SIGNALS} />
 
-          {/* Right: Signals */}
-          <main>
-            <SignalsPanel fallbackSignals={API_URL ? [] : MOCK_SIGNALS} />
-          </main>
-        </div>
-
-        {/* ── Bottom: Trade history + Performance ── */}
-        <div className="mt-4 space-y-4">
+        {/* Account-level panels */}
+        <div className="mt-6 space-y-4">
           <TradeHistoryPanel history={history} />
           <PerformancePanel  data={performance} />
         </div>

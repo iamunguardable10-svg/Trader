@@ -136,6 +136,23 @@ def get_decision(decision_id: str):
     return decision
 
 
+@app.get("/api/signals/{ticker}")
+def get_signals_for_ticker(ticker: str, limit: int = 100):
+    """All logged signals for a specific ticker, newest first."""
+    t = ticker.upper()
+    return [d for d in trade_logger.get_all() if (d.get("ticker") or "").upper() == t][:limit]
+
+
+@app.get("/api/tickers")
+def get_known_tickers():
+    """Return all tickers the algorithm is configured to watch."""
+    from analysis.entity_resolver import KNOWN_TICKERS, _TICKER_MAP
+    return [
+        {"ticker": t, **_TICKER_MAP[t]}
+        for t in KNOWN_TICKERS
+    ]
+
+
 @app.post("/api/analyze-news")
 def analyze_news(req: AnalyzeNewsRequest):
     """

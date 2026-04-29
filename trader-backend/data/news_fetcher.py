@@ -6,8 +6,10 @@ import feedparser
 from datetime import datetime, timezone
 from models.news import NewsItem
 
-# Tickers to watch — must match entity_resolver._TICKER_MAP
-WATCH_TICKERS = ["TSLA", "NVDA", "AAPL", "META", "AMD", "AMZN", "MSFT", "GOOGL"]
+from analysis.entity_resolver import KNOWN_TICKERS
+
+# All tickers the scheduler will poll — driven by entity_resolver
+WATCH_TICKERS = KNOWN_TICKERS
 
 _RSS_URL = "https://feeds.finance.yahoo.com/rss/2.0/headline?s={ticker}&region=US&lang=en-US"
 

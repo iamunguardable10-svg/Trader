@@ -114,6 +114,23 @@ export type OHLCVBar = {
   volume: number;
 };
 
+/** GET /api/signals/:ticker — all logged signals for one ticker */
+export async function fetchSignalsForTicker(ticker: string): Promise<TradeDecision[]> {
+  return apiFetch<TradeDecision[]>(`/api/signals/${ticker.toUpperCase()}`);
+}
+
+export type KnownTicker = {
+  ticker: string;
+  company_name: string;
+  sector: string;
+  industry: string;
+};
+
+/** GET /api/tickers — all tickers the algorithm watches */
+export async function fetchKnownTickers(): Promise<KnownTicker[]> {
+  return apiFetch<KnownTicker[]>("/api/tickers");
+}
+
 /** GET /api/chart/:ticker */
 export async function fetchChartData(
   ticker: string,
