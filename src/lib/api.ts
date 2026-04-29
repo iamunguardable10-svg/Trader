@@ -11,9 +11,24 @@ async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
   return res.json() as Promise<T>;
 }
 
-/** GET /api/latest-decision */
-export async function fetchLatestDecision(): Promise<TradeDecision> {
-  return apiFetch<TradeDecision>("/api/latest-decision");
+/** GET / — lightweight health check */
+export async function checkHealth(): Promise<boolean> {
+  try {
+    const res = await fetch(`${BASE_URL}/`, { headers: { "Content-Type": "application/json" } });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+/** GET /api/latest-decision — returns null when no decisions exist yet */
+export async function fetchLatestDecision(): Promise<TradeDecision | null> {
+  try {
+    return await apiFetch<TradeDecision>("/api/latest-decision");
+  } catch (e) {
+    if (e instanceof Error && e.message.includes("404")) return null;
+    throw e;
+  }
 }
 
 /** GET /api/decisions */

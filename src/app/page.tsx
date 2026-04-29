@@ -9,6 +9,7 @@ import {
   mockTradeHistory,
 } from "@/data/mockData";
 import {
+  checkHealth,
   fetchLatestDecision,
   fetchTradeHistory,
   fetchPerformance,
@@ -45,16 +46,18 @@ export default function DashboardPage() {
 
   const fetchAll = useCallback(async () => {
     if (!API_URL) return;
+
+    const online = await checkHealth();
+    setBackendOnline(online);
+    if (!online) return;
+
     const [decResult, histResult, perfResult] = await Promise.allSettled([
       fetchLatestDecision(),
       fetchTradeHistory(),
       fetchPerformance(),
     ]);
 
-    const online = decResult.status === "fulfilled";
-    setBackendOnline(online);
-
-    if (decResult.status === "fulfilled") {
+    if (decResult.status === "fulfilled" && decResult.value !== null) {
       setDecision(decResult.value);
       setLastRefreshed(new Date());
     }
