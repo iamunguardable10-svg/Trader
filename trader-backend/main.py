@@ -29,6 +29,7 @@ from data.duplicate_filter import DuplicateFilter
 from evaluation.trade_logger import TradeLogger
 from evaluation.performance_tracker import PerformanceTracker
 from execution.paper_broker import PaperBroker
+from data.news_scheduler import NewsScheduler
 
 # ── singleton state (in-memory; swap for DB later) ──────────────────────────
 
@@ -63,8 +64,11 @@ _portfolio = PortfolioState(
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    scheduler = NewsScheduler(algorithm, _portfolio)
+    scheduler.start()
     print("🚀 Trading backend started")
     yield
+    scheduler.stop()
     print("🛑 Trading backend stopped")
 
 app = FastAPI(
