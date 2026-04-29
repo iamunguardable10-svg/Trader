@@ -6,6 +6,8 @@ export type AppMode = "paper" | "live" | "backtest";
 export type DirectionalBias = "bullish" | "bearish" | "neutral";
 
 export type TradeDecision = {
+  id?: string;
+  logged_at?: string;
   mode: AppMode;
   ticker: string | null;
   company: string | null;
