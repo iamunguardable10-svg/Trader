@@ -1,75 +1,56 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { PerformanceData, TradeDecision, TradeHistoryEntry } from "@/types/trade";
-import { mockDecision, mockDecisionLong, mockPerformance, mockTradeHistory } from "@/data/mockData";
-import { checkHealth, fetchLatestDecision, fetchTradeHistory, fetchPerformance } from "@/lib/api";
-import { Header } from "@/components/dashboard/Header";
-import { WatchlistStrip } from "@/components/dashboard/WatchlistStrip";
-import { SignalsPanel } from "@/components/dashboard/SignalsPanel";
-import { TradeHistoryPanel } from "@/components/dashboard/TradeHistoryPanel";
-import { PerformancePanel } from "@/components/dashboard/PerformancePanel";
-import { formatDate } from "@/lib/utils";
+import { TradeDecision } from "@/types/trade";
+import { mockDecision, mockDecisionLong } from "@/data/mockData";
+import { fetchDecisions, fetchWatchlist } from "@/lib/api";
+import { OpportunityCards } from "@/components/dashboard/OpportunityCards";
+import { SignalsTable } from "@/components/dashboard/SignalsTable";
 
-const API_URL       = process.env.NEXT_PUBLIC_API_URL;
-const POLL_INTERVAL = 30_000;
+const API_URL = process.env.NEXT_PUBLIC_API_URL;
+const POLL_MS  = 30_000;
+
 const MOCK_SIGNALS: TradeDecision[] = [mockDecisionLong, mockDecision];
 
 export default function DashboardPage() {
-  const [latestDecision, setLatestDecision] = useState<TradeDecision>(mockDecision);
-  const [history,        setHistory       ] = useState<TradeHistoryEntry[]>(mockTradeHistory);
-  const [performance,    setPerformance   ] = useState<PerformanceData>(mockPerformance);
-  const [backendOnline,  setBackendOnline ] = useState(false);
-  const [lastRefreshed,  setLastRefreshed ] = useState<Date | null>(null);
+  const [signals,          setSignals         ] = useState<TradeDecision[]>(API_URL ? [] : MOCK_SIGNALS);
+  const [watchlistTickers, setWatchlistTickers] = useState<string[]>([]);
 
-  const fetchAll = useCallback(async () => {
+  const refresh = useCallback(async () => {
     if (!API_URL) return;
-    const online = await checkHealth();
-    setBackendOnline(online);
-    if (!online) return;
-    const [decResult, histResult, perfResult] = await Promise.allSettled([
-      fetchLatestDecision(), fetchTradeHistory(), fetchPerformance(),
-    ]);
-    if (decResult.status === "fulfilled" && decResult.value) {
-      setLatestDecision(decResult.value);
-      setLastRefreshed(new Date());
-    }
-    if (histResult.status === "fulfilled") setHistory(histResult.value);
-    if (perfResult.status === "fulfilled") setPerformance(perfResult.value);
+    try {
+      const [data, wl] = await Promise.allSettled([fetchDecisions(), fetchWatchlist()]);
+      if (data.status === "fulfilled" && data.value.length > 0) setSignals(data.value);
+      if (wl.status   === "fulfilled") setWatchlistTickers(wl.value.map((e) => e.ticker));
+    } catch { /* keep stale */ }
   }, []);
 
   useEffect(() => {
-    fetchAll();
+    refresh();
     if (!API_URL) return;
-    const id = setInterval(fetchAll, POLL_INTERVAL);
+    const id = setInterval(refresh, POLL_MS);
     return () => clearInterval(id);
-  }, [fetchAll]);
-
-  const headerDate = lastRefreshed
-    ? formatDate(lastRefreshed.toISOString())
-    : formatDate(latestDecision.news.published_at);
+  }, [refresh]);
 
   return (
-    <div className="min-h-screen bg-[#08080a] flex flex-col">
-      <Header mode={latestDecision.mode} lastUpdated={headerDate} backendOnline={backendOnline} />
-
-      <div className="flex-1 mx-auto w-full max-w-screen-xl px-4 py-6 md:px-6">
-        {/* Horizontal watchlist strip */}
-        <WatchlistStrip />
-
-        {/* All signals */}
-        <SignalsPanel fallbackSignals={API_URL ? [] : MOCK_SIGNALS} />
-
-        {/* Account-level panels */}
-        <div className="mt-6 space-y-4">
-          <TradeHistoryPanel history={history} />
-          <PerformancePanel  data={performance} />
-        </div>
+    <div className="p-6 max-w-screen-xl mx-auto">
+      {/* Top section title */}
+      <div className="mb-5">
+        <h1 className="text-lg font-bold text-zinc-100">Dashboard</h1>
+        <p className="text-xs text-zinc-500 mt-0.5">
+          {signals.length > 0
+            ? `${signals.length} signals · Updated live`
+            : API_URL
+              ? "Waiting for first signals…"
+              : "Demo mode — connect backend for live signals"}
+        </p>
       </div>
 
-      <footer className="border-t border-zinc-800 py-4 text-center text-xs text-zinc-700">
-        Signal Dashboard · Paper Trading Mode · No financial advice
-      </footer>
+      {/* Top opportunities */}
+      <OpportunityCards signals={signals} />
+
+      {/* All signals table */}
+      <SignalsTable signals={signals} watchlistTickers={watchlistTickers} />
     </div>
   );
 }

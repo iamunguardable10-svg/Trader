@@ -134,7 +134,7 @@ export async function fetchKnownTickers(): Promise<KnownTicker[]> {
 /** GET /api/chart/:ticker */
 export async function fetchChartData(
   ticker: string,
-  period: "1d" | "5d" | "1mo" = "1d",
+  period: "1d" | "5d" | "1mo" | "3mo" = "1d",
   interval: "1m" | "5m" | "15m" | "1h" | "1d" = "5m",
 ): Promise<OHLCVBar[]> {
   return apiFetch<OHLCVBar[]>(`/api/chart/${ticker}?period=${period}&interval=${interval}`);
