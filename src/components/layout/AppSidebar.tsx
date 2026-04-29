@@ -75,7 +75,8 @@ export function AppSidebar({ backendOnline }: { backendOnline?: boolean }) {
   useEffect(() => {
     refresh();
     const id = setInterval(refresh, REFRESH_MS);
-    return () => clearInterval(id);
+    window.addEventListener("backend-online", refresh);
+    return () => { clearInterval(id); window.removeEventListener("backend-online", refresh); };
   }, [refresh]);
 
   async function handleAdd() {

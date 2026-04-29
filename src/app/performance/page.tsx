@@ -20,7 +20,11 @@ export default function PerformancePage() {
     if (hist.status === "fulfilled") setHistory(hist.value);
   }, []);
 
-  useEffect(() => { refresh(); }, [refresh]);
+  useEffect(() => {
+    refresh();
+    window.addEventListener("backend-online", refresh);
+    return () => window.removeEventListener("backend-online", refresh);
+  }, [refresh]);
 
   return (
     <div className="p-6 max-w-screen-xl mx-auto space-y-4">

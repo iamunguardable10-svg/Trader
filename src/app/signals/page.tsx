@@ -24,7 +24,8 @@ export default function SignalsPage() {
     refresh();
     if (!API_URL) return;
     const id = setInterval(refresh, POLL_MS);
-    return () => clearInterval(id);
+    window.addEventListener("backend-online", refresh);
+    return () => { clearInterval(id); window.removeEventListener("backend-online", refresh); };
   }, [refresh]);
 
   return (

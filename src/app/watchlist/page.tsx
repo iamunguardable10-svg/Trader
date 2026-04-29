@@ -15,7 +15,12 @@ export default function WatchlistPage() {
     try { setEntries(await fetchWatchlist()); } catch { /* keep */ }
   }, []);
 
-  useEffect(() => { refresh(); const id = setInterval(refresh, 30_000); return () => clearInterval(id); }, [refresh]);
+  useEffect(() => {
+    refresh();
+    const id = setInterval(refresh, 30_000);
+    window.addEventListener("backend-online", refresh);
+    return () => { clearInterval(id); window.removeEventListener("backend-online", refresh); };
+  }, [refresh]);
 
   async function handleAdd() {
     const t = input.trim().toUpperCase();
