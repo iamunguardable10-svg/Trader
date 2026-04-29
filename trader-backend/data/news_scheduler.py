@@ -1,10 +1,13 @@
 """
 Periodically fetches news via RSS and runs each new headline through the
 trading algorithm. Skips duplicates using a URL-keyed seen-set (in-memory).
+Also pings its own health endpoint every 10 minutes to prevent Render free
+tier from spinning down due to inactivity.
 """
 import asyncio
 import logging
 import os
+import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 
@@ -14,8 +17,18 @@ from data.news_fetcher import WATCH_TICKERS, fetch_ticker_news
 
 logger = logging.getLogger(__name__)
 
-_INTERVAL_MINUTES = int(os.getenv("NEWS_POLL_MINUTES", "5"))
+_INTERVAL_MINUTES = int(os.getenv("NEWS_POLL_MINUTES", "2"))
+_KEEPALIVE_MINUTES = 10
+_SELF_URL = os.getenv("RENDER_EXTERNAL_URL", "http://localhost:8000")
 _executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="news_fetch")
+
+
+def _ping_self() -> None:
+    try:
+        urllib.request.urlopen(f"{_SELF_URL}/", timeout=10)
+        logger.debug("[KeepAlive] ping ok")
+    except Exception as exc:
+        logger.debug(f"[KeepAlive] ping failed (non-critical): {exc}")
 
 
 class NewsScheduler:
@@ -33,13 +46,23 @@ class NewsScheduler:
             id="news_fetch",
             next_run_time=datetime.now(),   # fire immediately on startup
         )
+        self._scheduler.add_job(
+            self._keepalive,
+            "interval",
+            minutes=_KEEPALIVE_MINUTES,
+            id="keepalive",
+        )
         self._scheduler.start()
-        logger.info(f"[Scheduler] Started — polling every {_INTERVAL_MINUTES} min for {WATCH_TICKERS}")
+        logger.info(f"[Scheduler] Started — polling every {_INTERVAL_MINUTES} min, keep-alive every {_KEEPALIVE_MINUTES} min")
 
     def stop(self) -> None:
         self._scheduler.shutdown(wait=False)
         _executor.shutdown(wait=False)
         logger.info("[Scheduler] Stopped")
+
+    async def _keepalive(self) -> None:
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(_executor, _ping_self)
 
     async def _run(self) -> None:
         loop = asyncio.get_event_loop()
