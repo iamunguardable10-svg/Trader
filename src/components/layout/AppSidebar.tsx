@@ -3,11 +3,11 @@
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { fetchWatchlist, fetchChartData, addToWatchlist, WatchlistEntry } from "@/lib/api";
+import { fetchChartData, addToWatchlist, WatchlistEntry } from "@/lib/api";
+import { useData } from "@/contexts/DataContext";
 import { LineChart, Line, ResponsiveContainer } from "recharts";
 
-const API_URL    = process.env.NEXT_PUBLIC_API_URL;
-const REFRESH_MS = 60_000;
+const API_URL = process.env.NEXT_PUBLIC_API_URL;
 
 function Sparkline({ data, up }: { data: number[]; up: boolean }) {
   const pts = data.map((v, i) => ({ v, i }));
@@ -49,42 +49,37 @@ function WatchlistRow({ entry }: { entry: WatchlistEntry & { closes?: number[] }
 
 export function AppSidebar({ backendOnline }: { backendOnline?: boolean }) {
   const pathname = usePathname();
+  const { watchlistEntries, refresh: refreshData } = useData();
   const [entries, setEntries] = useState<(WatchlistEntry & { closes?: number[] })[]>([]);
   const [addInput, setAddInput] = useState("");
   const [adding, setAdding]    = useState(false);
 
-  const refresh = useCallback(async () => {
-    if (!API_URL) return;
-    try {
-      const wl = await fetchWatchlist();
-      // Fetch sparklines for each ticker (silent fail)
-      const enriched = await Promise.all(
-        wl.map(async (e) => {
-          try {
-            const bars = await fetchChartData(e.ticker, "1d", "15m");
-            return { ...e, closes: bars.map((b) => b.close) };
-          } catch {
-            return e;
-          }
-        })
-      );
-      setEntries(enriched);
-    } catch { /* keep stale */ }
+  // Enrich watchlist entries with sparkline data
+  const enrichSparklines = useCallback(async (wl: WatchlistEntry[]) => {
+    if (!API_URL || wl.length === 0) return;
+    const enriched = await Promise.all(
+      wl.map(async (e) => {
+        try {
+          const bars = await fetchChartData(e.ticker, "1d", "15m");
+          return { ...e, closes: bars.map((b) => b.close) };
+        } catch {
+          return e;
+        }
+      })
+    );
+    setEntries(enriched);
   }, []);
 
   useEffect(() => {
-    refresh();
-    const id = setInterval(refresh, REFRESH_MS);
-    window.addEventListener("backend-online", refresh);
-    return () => { clearInterval(id); window.removeEventListener("backend-online", refresh); };
-  }, [refresh]);
+    enrichSparklines(watchlistEntries);
+  }, [watchlistEntries, enrichSparklines]);
 
   async function handleAdd() {
     const t = addInput.trim().toUpperCase();
     if (!t || !API_URL) return;
     await addToWatchlist(t).catch(() => {});
     setAddInput(""); setAdding(false);
-    refresh();
+    refreshData();
   }
 
   const navItems = [

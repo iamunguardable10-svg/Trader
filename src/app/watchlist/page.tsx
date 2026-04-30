@@ -1,32 +1,22 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState } from "react";
 import Link from "next/link";
-import { fetchWatchlist, addToWatchlist, removeFromWatchlist, WatchlistEntry } from "@/lib/api";
+import { addToWatchlist, removeFromWatchlist } from "@/lib/api";
+import { useData } from "@/contexts/DataContext";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL;
 
 export default function WatchlistPage() {
-  const [entries, setEntries] = useState<WatchlistEntry[]>([]);
-  const [input,   setInput  ] = useState("");
-
-  const refresh = useCallback(async () => {
-    if (!API_URL) return;
-    try { setEntries(await fetchWatchlist()); } catch { /* keep */ }
-  }, []);
-
-  useEffect(() => {
-    refresh();
-    const id = setInterval(refresh, 30_000);
-    window.addEventListener("backend-online", refresh);
-    return () => { clearInterval(id); window.removeEventListener("backend-online", refresh); };
-  }, [refresh]);
+  const { watchlistEntries, refresh } = useData();
+  const [input, setInput] = useState("");
 
   async function handleAdd() {
     const t = input.trim().toUpperCase();
     if (!t || !API_URL) return;
     await addToWatchlist(t).catch(() => {});
-    setInput(""); refresh();
+    setInput("");
+    refresh();
   }
 
   async function handleRemove(ticker: string) {
@@ -55,7 +45,7 @@ export default function WatchlistPage() {
         </button>
       </div>
 
-      {entries.length === 0 ? (
+      {watchlistEntries.length === 0 ? (
         <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-10 text-center">
           <p className="text-sm text-zinc-500">{API_URL ? "No tickers yet — add one above" : "Connect backend to manage watchlist"}</p>
         </div>
@@ -70,7 +60,7 @@ export default function WatchlistPage() {
               </tr>
             </thead>
             <tbody>
-              {entries.map((e) => {
+              {watchlistEntries.map((e) => {
                 const pos = (e.day_change_pct ?? 0) >= 0;
                 return (
                   <tr key={e.ticker} className="border-b border-zinc-800/50 hover:bg-zinc-800/20">

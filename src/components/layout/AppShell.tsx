@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { AppSidebar } from "./AppSidebar";
 import { AppNav } from "./AppNav";
 import { checkHealth } from "@/lib/api";
+import { DataProvider } from "@/contexts/DataContext";
 
 const API_URL      = process.env.NEXT_PUBLIC_API_URL;
 const POLL_ONLINE  = 30_000;
@@ -40,26 +41,28 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const showBanner = !!API_URL && !backendOnline;
 
   return (
-    <div className="flex h-full">
-      <AppSidebar backendOnline={backendOnline} />
+    <DataProvider>
+      <div className="flex h-full">
+        <AppSidebar backendOnline={backendOnline} />
 
-      <div className="flex flex-col flex-1 min-w-0 h-full overflow-hidden">
-        <AppNav />
+        <div className="flex flex-col flex-1 min-w-0 h-full overflow-hidden">
+          <AppNav />
 
-        {/* Wake-up banner */}
-        {showBanner && (
-          <div className="flex items-center gap-3 px-4 py-2.5 bg-amber-500/10 border-b border-amber-500/20 text-xs text-amber-400">
-            <span className="inline-block w-3 h-3 rounded-full border-2 border-amber-400 border-t-transparent animate-spin shrink-0" />
-            <span>
-              {checking
-                ? "Connecting to backend…"
-                : "Backend is waking up — this takes ~30 seconds on the free tier…"}
-            </span>
-          </div>
-        )}
+          {/* Wake-up banner */}
+          {showBanner && (
+            <div className="flex items-center gap-3 px-4 py-2.5 bg-amber-500/10 border-b border-amber-500/20 text-xs text-amber-400">
+              <span className="inline-block w-3 h-3 rounded-full border-2 border-amber-400 border-t-transparent animate-spin shrink-0" />
+              <span>
+                {checking
+                  ? "Connecting to backend…"
+                  : "Backend is waking up — this takes ~30 seconds on the free tier…"}
+              </span>
+            </div>
+          )}
 
-        <main className="flex-1 overflow-y-auto">{children}</main>
+          <main className="flex-1 overflow-y-auto">{children}</main>
+        </div>
       </div>
-    </div>
+    </DataProvider>
   );
 }
