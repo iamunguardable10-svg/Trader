@@ -136,8 +136,8 @@ class ScoringEngine:
 
     def _score_uncertainty(self, a: LLMNewsAnalysis) -> float:
         penalty = 0.0
-        if a.confidence < 0.75:           penalty += 5
-        if a.importance < 0.70:           penalty += 5
-        if a.needs_human_review:          penalty += 15
+        if a.confidence < 0.60:           penalty += 5
+        if a.importance < 0.55:           penalty += 5
+        if a.needs_human_review:          penalty += 5
         if a.directional_bias == "neutral": penalty += 25
         return penalty
