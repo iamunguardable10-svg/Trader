@@ -27,7 +27,7 @@ export default function PerformancePage() {
   }, [refresh]);
 
   return (
-    <div className="p-6 max-w-screen-xl mx-auto space-y-4">
+    <div className="p-4 md:p-6 max-w-screen-xl mx-auto space-y-4">
       <div className="mb-2">
         <h1 className="text-lg font-bold text-zinc-100">Performance</h1>
         <p className="text-xs text-zinc-500 mt-0.5">Paper trading statistics and trade history</p>

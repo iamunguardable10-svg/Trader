@@ -47,7 +47,7 @@ function WatchlistRow({ entry }: { entry: WatchlistEntry & { closes?: number[] }
   );
 }
 
-export function AppSidebar({ backendOnline }: { backendOnline?: boolean }) {
+export function AppSidebar({ backendOnline, onClose }: { backendOnline?: boolean; onClose?: () => void }) {
   const pathname = usePathname();
   const { watchlistEntries, refresh: refreshData } = useData();
   const [entries, setEntries] = useState<(WatchlistEntry & { closes?: number[] })[]>([]);
@@ -95,11 +95,14 @@ export function AppSidebar({ backendOnline }: { backendOnline?: boolean }) {
   return (
     <aside className="flex flex-col h-full w-56 border-r border-zinc-800 bg-zinc-950 shrink-0">
       {/* Logo */}
-      <div className="px-4 py-4 border-b border-zinc-800">
+      <div className="px-4 py-4 border-b border-zinc-800 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <div className="w-7 h-7 rounded-lg bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center text-emerald-400 text-sm font-bold">S</div>
           <span className="text-sm font-bold text-zinc-100 tracking-tight">SignalEdge</span>
         </div>
+        {onClose && (
+          <button onClick={onClose} className="md:hidden text-zinc-500 hover:text-zinc-300 text-lg leading-none">✕</button>
+        )}
       </div>
 
       {/* Nav */}

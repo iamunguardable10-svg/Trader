@@ -104,8 +104,34 @@ export function SignalsTable({ signals, watchlistTickers }: Props) {
         </div>
       </div>
 
-      {/* Table */}
-      <div className="overflow-x-auto">
+      {/* Mobile card list */}
+      <div className="md:hidden divide-y divide-zinc-800/50">
+        {filtered.length === 0 && (
+          <p className="px-4 py-10 text-center text-xs text-zinc-600">No signals match this filter</p>
+        )}
+        {filtered.map((s, i) => {
+          const time = s.logged_at ? formatDate(s.logged_at) : formatDate(s.news.published_at);
+          return (
+            <Link key={s.id ?? i} href={`/stock/${s.ticker ?? ""}`} className="flex items-start gap-3 px-4 py-3 hover:bg-zinc-800/30 transition-colors">
+              <div className={`mt-0.5 text-sm font-bold w-6 shrink-0 ${getDecisionColor(s.decision)}`}>{ICON[s.decision]}</div>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2 mb-0.5">
+                  <span className="font-bold text-zinc-100 text-sm">{s.ticker ?? "—"}</span>
+                  <span className={`text-xs font-bold ${getFinalScoreColor(s.final_score)}`}>
+                    {s.final_score > 0 ? "+" : ""}{s.final_score.toFixed(1)}
+                  </span>
+                  {s.trade_allowed && <span className="text-xs text-emerald-500">✓</span>}
+                </div>
+                <p className="text-xs text-zinc-400 truncate">{s.news.headline}</p>
+                <p className="text-xs text-zinc-600 mt-0.5">{time}</p>
+              </div>
+            </Link>
+          );
+        })}
+      </div>
+
+      {/* Desktop table */}
+      <div className="hidden md:block overflow-x-auto">
         <table className="w-full text-xs">
           <thead>
             <tr className="border-b border-zinc-800">
@@ -127,19 +153,12 @@ export function SignalsTable({ signals, watchlistTickers }: Props) {
             {filtered.map((s, i) => {
               const time = s.logged_at ? formatDate(s.logged_at) : formatDate(s.news.published_at);
               return (
-                <tr
-                  key={s.id ?? i}
-                  className="border-b border-zinc-800/50 hover:bg-zinc-800/30 transition-colors"
-                >
+                <tr key={s.id ?? i} className="border-b border-zinc-800/50 hover:bg-zinc-800/30 transition-colors">
                   <td className="px-4 py-3">
                     <Link href={`/stock/${s.ticker ?? ""}`} className="group">
-                      <span className="font-bold text-zinc-100 group-hover:text-emerald-400 transition-colors">
-                        {s.ticker ?? "—"}
-                      </span>
+                      <span className="font-bold text-zinc-100 group-hover:text-emerald-400 transition-colors">{s.ticker ?? "—"}</span>
                       {s.trade_allowed && (
-                        <span className="ml-2 rounded bg-emerald-500/10 border border-emerald-500/20 px-1.5 py-0.5 text-xs text-emerald-500">
-                          ✓
-                        </span>
+                        <span className="ml-2 rounded bg-emerald-500/10 border border-emerald-500/20 px-1.5 py-0.5 text-xs text-emerald-500">✓</span>
                       )}
                     </Link>
                   </td>
@@ -155,9 +174,7 @@ export function SignalsTable({ signals, watchlistTickers }: Props) {
                     </Link>
                   </td>
                   <td className="px-4 py-3 text-zinc-500 whitespace-nowrap">{time}</td>
-                  <td className="px-4 py-3">
-                    <ConfidenceBar value={s.confidence} />
-                  </td>
+                  <td className="px-4 py-3"><ConfidenceBar value={s.confidence} /></td>
                 </tr>
               );
             })}

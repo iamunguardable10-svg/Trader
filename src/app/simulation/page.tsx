@@ -14,7 +14,7 @@ export default function SimulationPage() {
   }
 
   return (
-    <div className="p-6 max-w-screen-md mx-auto">
+    <div className="p-4 md:p-6 max-w-screen-md mx-auto">
       <div className="mb-6">
         <h1 className="text-lg font-bold text-zinc-100">Simulation Lab</h1>
         <p className="text-xs text-zinc-500 mt-0.5">

@@ -20,35 +20,37 @@ from config.event_weights import EVENT_WEIGHTS
 # ---------------------------------------------------------------------------
 
 def build_llm_prompt(news_item: NewsItem, entity_data: EntityData) -> str:
-    return f"""You are a financial news analysis engine.
-Analyze the following news for short-term stock market impact.
-Return ONLY valid JSON — no markdown, no explanation.
+    event_list = ", ".join(EVENT_WEIGHTS.keys())
+    return f"""You are an expert quantitative trader analyzing financial news for short-term (intraday) stock price impact.
 
+Your job: assess whether this news item is likely to move {entity_data.primary_ticker} stock significantly in the next 1-2 hours, and in which direction.
+
+Think like a trader, not a journalist:
+- Strong earnings beats → strong bullish, high importance, high surprise
+- Analyst upgrades with price target raise → mild bullish
+- Vague market commentary ("stock to watch") → low importance, neutral
+- Price percentage moves already happened (past tense, e.g. "gained 2%") → low surprise (already priced in), directional bias still valid
+- Regulatory approvals, major contracts, M&A → high importance
+- Macroeconomic news about the sector → moderate importance
+
+NEWS:
 Headline: {news_item.headline}
-Body: {news_item.body}
-Company: {entity_data.company_name} / {entity_data.primary_ticker}
+Body: {news_item.body or "(no body)"}
+Company: {entity_data.company_name} ({entity_data.primary_ticker})
 Sector: {entity_data.sector}
 
-Output schema:
+Return ONLY valid JSON, no markdown, no explanation:
 {{
-  "event_type": "one of: {', '.join(EVENT_WEIGHTS.keys())}",
+  "event_type": "one of: {event_list}",
   "directional_bias": "bullish | bearish | neutral",
   "impact_time_horizon": "intraday | swing | long_term | unclear",
-  "importance": 0.0,
-  "confidence": 0.0,
-  "surprise_level": 0.0,
-  "reasoning_summary": "...",
-  "key_risks": ["...", "..."],
-  "needs_human_review": false
-}}
-
-Rules:
-- Do NOT recommend buying or selling.
-- Only analyze likely market impact.
-- If unclear → reduce confidence.
-- If already priced in → reduce surprise_level.
-- importance and confidence must be between 0.0 and 1.0.
-"""
+  "importance": <0.0-1.0, how market-moving is this news>,
+  "confidence": <0.0-1.0, how certain are you of the direction>,
+  "surprise_level": <0.0-1.0, how unexpected is this — 0 if already priced in>,
+  "reasoning_summary": "<one sentence explaining your assessment>",
+  "key_risks": ["<risk 1>", "<risk 2>"],
+  "needs_human_review": <true only for fraud/legal/ambiguous situations>
+}}"""
 
 
 # ---------------------------------------------------------------------------
@@ -56,38 +58,76 @@ Rules:
 # ---------------------------------------------------------------------------
 
 _BEARISH_KEYWORDS = {
-    "cut", "cuts", "miss", "misses", "missed", "decline", "declines",
-    "drop", "drops", "fell", "fall", "loss", "losses", "lawsuit",
-    "investigation", "fraud", "recall", "delay", "delays", "resign",
-    "fired", "lays off", "layoffs", "guidance cut", "warning",
+    # Price movement
+    "falls", "fall", "fell", "drop", "drops", "dropped", "decline", "declines", "declined",
+    "down", "lower", "loses", "lost", "slide", "slides", "slid", "slump", "slumps",
+    "tumble", "tumbles", "tumbled", "plunge", "plunges", "plunged", "sink", "sinks",
+    "retreats", "retreat", "selloff", "sell-off", "dip", "dips",
+    # Fundamentals
+    "miss", "misses", "missed", "loss", "losses", "cut", "cuts",
+    "lawsuit", "investigation", "fraud", "recall", "delay", "delays",
+    "resign", "fired", "lays off", "layoffs", "guidance cut", "warning",
+    "downgrade", "downgraded", "concern", "concerns", "risk", "risks",
+    "weak", "weakness", "disappoints", "disappointing", "disappointing",
+    "bearish", "short", "overvalued", "trouble", "troubles", "struggles",
+    "bankruptcy", "default", "debt", "losses", "shrinks", "shrinking",
 }
 
 _BULLISH_KEYWORDS = {
+    # Price movement
+    "gains", "gain", "rises", "rise", "rose", "up", "higher", "jumps", "jumped",
+    "surges", "surge", "surged", "soars", "soar", "soared", "climbs", "climb",
+    "rallies", "rally", "rallied", "advances", "advance", "pops", "pop",
+    "outperforms", "outperform",
+    # Fundamentals
     "beat", "beats", "record", "raise", "raised", "raises", "upgrade",
     "upgraded", "buyback", "dividend", "approval", "approved", "contract",
     "partnership", "launch", "launches", "acquisition", "takeover",
-    "guidance raise", "strong", "surge", "surges",
+    "guidance raise", "strong", "growth", "growing", "profit", "profitable",
+    "bullish", "buy", "overweight", "positive", "exceeds", "tops", "crushes",
+    "momentum", "breakout", "opportunity", "undervalued",
 }
 
 _EVENT_KEYWORDS: dict[str, list[str]] = {
     "price_cut":                ["price cut", "cuts price", "price reduction", "reduces price"],
-    "earnings_beat_strong":     ["beat", "beats earnings", "earnings beat"],
-    "earnings_miss_strong":     ["miss", "misses earnings", "earnings miss"],
-    "earnings_guidance_raise":  ["raises guidance", "guidance raise", "raised outlook"],
-    "earnings_guidance_cut":    ["cuts guidance", "guidance cut", "lowered outlook"],
-    "analyst_upgrade":          ["upgrade", "upgraded", "raises target", "raised target"],
-    "analyst_downgrade":        ["downgrade", "downgraded", "lowers target"],
-    "major_lawsuit":            ["lawsuit", "sued", "sues", "legal action"],
-    "regulatory_investigation": ["investigation", "probe", "sec", "doj"],
-    "regulatory_approval":      ["approved", "approval", "fda approved"],
-    "ceo_resignation":          ["ceo resign", "ceo steps down", "ceo fired"],
-    "product_launch":           ["launch", "launches", "unveils", "announced"],
-    "fraud_allegation":         ["fraud", "accounting fraud", "falsified"],
-    "insider_buying":           ["insider buy", "insider purchase"],
-    "insider_selling":          ["insider sell", "insider sold"],
-    "takeover_offer":           ["takeover", "acquisition", "buyout", "merger"],
-    "share_buyback_large":      ["buyback", "share repurchase"],
-    "product_delay":            ["delay", "delayed", "postponed"],
+    "earnings_beat_strong":     ["beat", "beats earnings", "earnings beat", "topped estimates",
+                                 "exceeded expectations", "above expectations", "earnings topped"],
+    "earnings_miss_strong":     ["miss", "misses earnings", "earnings miss", "missed estimates",
+                                 "below expectations", "earnings fell short"],
+    "earnings_guidance_raise":  ["raises guidance", "guidance raise", "raised outlook", "raised forecast",
+                                 "raised full-year", "raises full-year", "raised its outlook"],
+    "earnings_guidance_cut":    ["cuts guidance", "guidance cut", "lowered outlook", "lowered forecast",
+                                 "cut its outlook", "reduced guidance"],
+    "analyst_upgrade":          ["upgrade", "upgraded", "raises target", "raised target",
+                                 "raised price target", "initiates", "outperform", "overweight",
+                                 "buy rating", "strong buy"],
+    "analyst_downgrade":        ["downgrade", "downgraded", "lowers target", "lowered target",
+                                 "lowered price target", "underperform", "underweight", "sell rating"],
+    "major_lawsuit":            ["lawsuit", "sued", "sues", "legal action", "class action",
+                                 "antitrust", "litigation"],
+    "regulatory_investigation": ["investigation", "probe", "sec", "doj", "ftc", "investigated",
+                                 "subpoena", "regulatory scrutiny"],
+    "regulatory_approval":      ["approved", "approval", "fda approved", "cleared", "authorized",
+                                 "green light", "regulatory approval"],
+    "ceo_resignation":          ["ceo resign", "ceo steps down", "ceo fired", "ceo departs",
+                                 "chief executive resign", "steps down as ceo"],
+    "product_launch":           ["launch", "launches", "unveils", "announced", "introduces",
+                                 "new product", "release", "releases", "debuts"],
+    "fraud_allegation":         ["fraud", "accounting fraud", "falsified", "manipulated",
+                                 "misrepresented", "embezzlement"],
+    "insider_buying":           ["insider buy", "insider purchase", "insider bought",
+                                 "director bought", "executive bought"],
+    "insider_selling":          ["insider sell", "insider sold", "insider selling",
+                                 "director sold", "executive sold"],
+    "takeover_offer":           ["takeover", "acquisition", "buyout", "merger", "acquires",
+                                 "to acquire", "bid for", "deal to buy"],
+    "share_buyback_large":      ["buyback", "share repurchase", "repurchase program",
+                                 "buying back shares"],
+    "product_delay":            ["delay", "delayed", "postponed", "pushes back", "pushed back"],
+    "partnership":              ["partnership", "partner", "partners with", "joint venture",
+                                 "collaboration", "deal with", "agreement with", "signs deal"],
+    "major_contract_win":       ["wins contract", "awarded contract", "major contract",
+                                 "government contract", "contract win"],
 }
 
 
@@ -117,28 +157,50 @@ def _detect_bias(headline: str, body: str, event_type: str) -> str:
     return "neutral"
 
 
-def _mock_analyze(news_item: NewsItem, entity_data: EntityData) -> LLMNewsAnalysis:
-    event_type = _detect_event_type(news_item.headline, news_item.body)
-    bias = _detect_bias(news_item.headline, news_item.body, event_type)
-    weight = abs(EVENT_WEIGHTS.get(event_type, 0))
+import re as _re
 
-    importance    = min(0.95, 0.50 + weight / 100)
-    confidence    = 0.72
-    surprise_level= min(0.90, 0.40 + weight / 80)
-    needs_review  = event_type in ("fraud_allegation", "accounting_issue", "unknown")
+def _extract_pct_move(text: str) -> float | None:
+    """Extract percentage move from headline, e.g. 'gains 2.5%' → +2.5, 'falls 3%' → -3."""
+    m = _re.search(r'([+-]?\d+\.?\d*)\s*%', text)
+    if m:
+        return float(m.group(1))
+    return None
+
+
+def _mock_analyze(news_item: NewsItem, entity_data: EntityData) -> LLMNewsAnalysis:
+    text       = news_item.headline + " " + news_item.body
+    event_type = _detect_event_type(news_item.headline, news_item.body)
+    bias       = _detect_bias(news_item.headline, news_item.body, event_type)
+    weight     = abs(EVENT_WEIGHTS.get(event_type, 0))
+
+    # If bias still neutral after keyword check, try reading explicit % move
+    if bias == "neutral":
+        pct = _extract_pct_move(text)
+        if pct is not None:
+            if pct > 0.5:
+                bias = "bullish"
+            elif pct < -0.5:
+                bias = "bearish"
+
+    # Scale importance/surprise by event weight; floor higher so more signals pass
+    importance     = round(min(0.95, 0.60 + weight / 80), 2)
+    surprise_level = round(min(0.90, 0.45 + weight / 70), 2)
+    confidence     = 0.68 if bias == "neutral" else 0.75
+
+    needs_review = event_type in ("fraud_allegation", "accounting_issue")
 
     return LLMNewsAnalysis(
         event_type=event_type,
         directional_bias=bias,
         impact_time_horizon="intraday",
-        importance=round(importance, 2),
-        confidence=round(confidence, 2),
-        surprise_level=round(surprise_level, 2),
+        importance=importance,
+        confidence=confidence,
+        surprise_level=surprise_level,
         reasoning_summary=(
-            f"Keyword-based analysis detected event '{event_type}' "
-            f"with {bias} bias. Replace with real LLM for better accuracy."
+            f"Keyword-based: event='{event_type}', bias={bias}. "
+            f"Set LLM_PROVIDER=openai/groq for better accuracy."
         ),
-        key_risks=["Signal based on heuristics only", "LLM not connected"],
+        key_risks=["Heuristic analysis only — connect LLM for production"],
         needs_human_review=needs_review,
     )
 

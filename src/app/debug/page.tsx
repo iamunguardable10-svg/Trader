@@ -54,7 +54,7 @@ export default function DebugPage() {
   const dirColor = result?.decision === "LONG" ? "text-emerald-400" : result?.decision === "SHORT" ? "text-red-400" : "text-zinc-500";
 
   return (
-    <div className="p-6 max-w-screen-lg mx-auto space-y-6">
+    <div className="p-4 md:p-6 max-w-screen-lg mx-auto space-y-6">
       <div>
         <h1 className="text-lg font-bold text-zinc-100">Score Tester</h1>
         <p className="text-xs text-zinc-500 mt-0.5">Teste beliebige Schlagzeilen gegen den Algorithmus — ohne Dedup oder Logging</p>

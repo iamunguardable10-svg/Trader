@@ -33,7 +33,7 @@ export default function BacktestPage() {
   const s    = data?.summary;
 
   return (
-    <div className="p-6 max-w-screen-xl mx-auto space-y-6">
+    <div className="p-4 md:p-6 max-w-screen-xl mx-auto space-y-6">
       <div className="flex items-end justify-between">
         <div>
           <h1 className="text-lg font-bold text-zinc-100">Backtest</h1>
