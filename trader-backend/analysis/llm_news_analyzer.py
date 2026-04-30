@@ -33,11 +33,13 @@ Think like a trader, not a journalist:
 - Regulatory approvals, major contracts, M&A → high importance
 - Macroeconomic news about the sector → moderate importance
 
-NEWS:
+NEWS TO ANALYZE:
 Headline: {news_item.headline}
-Body: {news_item.body or "(no body)"}
+Full text: {(news_item.body or "").strip() or "(no additional text — headline only)"}
 Company: {entity_data.company_name} ({entity_data.primary_ticker})
 Sector: {entity_data.sector}
+
+Read the FULL text carefully before deciding. Do not rely on keywords alone — understand the actual business impact.
 
 Return ONLY valid JSON, no markdown, no explanation:
 {{

@@ -84,7 +84,14 @@ class MarketDataProvider:
 
         avg_vol   = _safe_float(getattr(info, "three_month_average_volume", None))
         day_vol   = _safe_float(getattr(info, "day_volume",                 None))
-        rel_vol   = (day_vol / avg_vol) if avg_vol > 0 else 1.0
+
+        # After market hours yfinance returns day_volume=0.
+        # Fall back to the sum of today's intraday bar volumes so the
+        # relative-volume check still works outside trading hours.
+        if day_vol == 0 and not bars.empty:
+            day_vol = float(bars["Volume"].sum())
+
+        rel_vol = (day_vol / avg_vol) if avg_vol > 0 and day_vol > 0 else 1.0
 
         open_price = _safe_float(getattr(info, "open",          None)) or price
         gap_pct    = ((open_price - prev_close) / prev_close * 100) if prev_close else 0.0
