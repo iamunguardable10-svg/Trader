@@ -15,6 +15,7 @@ import { ScoreBreakdown } from "@/components/dashboard/ScoreBreakdown";
 import { NewsCard } from "@/components/dashboard/NewsCard";
 import { TradePlanPanel } from "@/components/dashboard/TradePlanPanel";
 import { ExitPlanPanel } from "@/components/dashboard/ExitPlanPanel";
+import { PaperTradePanel } from "@/components/dashboard/PaperTradePanel";
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, ReferenceLine,
@@ -24,7 +25,7 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL;
 
 type Period   = "1d" | "5d" | "1mo" | "3mo";
 type Interval = "5m" | "15m" | "1h" | "1d";
-type Tab      = "overview" | "analysis" | "news" | "tradeplan" | "backtest";
+type Tab      = "overview" | "analysis" | "news" | "tradeplan" | "simulation" | "backtest";
 
 const PERIOD_CFG: Record<Period, { interval: Interval; label: string }> = {
   "1d":  { interval: "5m",  label: "1D" },
@@ -141,7 +142,10 @@ export default function StockPage() {
   const strokeColor= isUp ? "#10b981" : "#f87171";
   const gradId     = isUp ? "sg" : "sr";
 
-  const signalMarkers = simulate
+  // Show markers whenever simulation tab is active OR the toggle is on
+  const showMarkers = simulate || tab === "simulation";
+
+  const signalMarkers = showMarkers
     ? signals.map((s) => {
         const raw = new Date(s.logged_at ?? s.news.published_at);
         const label = period === "1d"
@@ -151,12 +155,18 @@ export default function StockPage() {
       })
     : [];
 
+  // Most recent actionable signal for this ticker (for paper trade panel)
+  const latestActionable = signals.find(
+    (s) => s.decision === "LONG" || s.decision === "SHORT"
+  ) ?? signals[0] ?? null;
+
   const TABS: { key: Tab; label: string }[] = [
-    { key: "overview",  label: "Overview"   },
-    { key: "analysis",  label: "Analysis"   },
-    { key: "news",      label: "News"       },
-    { key: "tradeplan", label: "Trade Plan" },
-    { key: "backtest",  label: "Backtest"   },
+    { key: "overview",   label: "Overview"    },
+    { key: "analysis",   label: "Analysis"    },
+    { key: "news",       label: "News"        },
+    { key: "tradeplan",  label: "Trade Plan"  },
+    { key: "simulation", label: "⚗ Simulate" },
+    { key: "backtest",   label: "Backtest"    },
   ];
 
   // Key stats from latest signal
@@ -290,7 +300,7 @@ export default function StockPage() {
                 )}
               </div>
 
-              {simulate && signalMarkers.length > 0 && (
+              {showMarkers && signalMarkers.length > 0 && (
                 <div className="flex items-center gap-4 mt-2 text-xs">
                   <span className="text-emerald-400">▲ LONG</span>
                   <span className="text-red-400">▼ SHORT</span>
@@ -317,6 +327,48 @@ export default function StockPage() {
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <TradePlanPanel plan={selected.trade_plan} />
                 <ExitPlanPanel  plan={selected.exit_plan} />
+              </div>
+            )}
+            {tab === "simulation" && (
+              <div className="space-y-4">
+                <PaperTradePanel
+                  ticker={ticker}
+                  signal={latestActionable}
+                  currentPrice={lastClose}
+                  onPositionChange={loadSignals}
+                />
+                {signals.length > 0 && (
+                  <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-4">
+                    <p className="text-xs font-semibold uppercase tracking-widest text-zinc-500 mb-3">
+                      Signal History · {signals.length}
+                    </p>
+                    <div className="space-y-1.5 max-h-64 overflow-y-auto">
+                      {signals.map((s, i) => {
+                        const time = s.logged_at ? formatDate(s.logged_at) : formatDate(s.news.published_at);
+                        const isActionable = s.decision === "LONG" || s.decision === "SHORT";
+                        return (
+                          <div key={s.id ?? i} className={`rounded-lg border px-3 py-2 flex items-center justify-between ${
+                            isActionable ? "border-zinc-700 bg-zinc-900" : "border-zinc-800/50 bg-zinc-900/20"
+                          }`}>
+                            <div className="flex items-center gap-2">
+                              <span className={`text-xs font-bold ${
+                                s.decision === "LONG" ? "text-emerald-400" : s.decision === "SHORT" ? "text-red-400" : "text-zinc-600"
+                              }`}>
+                                {DECISION_ICON[s.decision]} {s.decision}
+                              </span>
+                              <span className="text-xs text-zinc-600">{time}</span>
+                            </div>
+                            <span className={`text-xs font-mono font-bold ${
+                              s.final_score > 0 ? "text-emerald-400" : s.final_score < 0 ? "text-red-400" : "text-zinc-500"
+                            }`}>
+                              {s.final_score > 0 ? "+" : ""}{s.final_score.toFixed(1)}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
             {tab === "backtest" && (

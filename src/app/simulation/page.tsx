@@ -10,7 +10,7 @@ export default function SimulationPage() {
   const router = useRouter();
 
   function launch() {
-    router.push(`/stock/${ticker}?simulate=true`);
+    router.push(`/stock/${ticker}#simulation`);
   }
 
   return (
@@ -18,7 +18,7 @@ export default function SimulationPage() {
       <div className="mb-6">
         <h1 className="text-lg font-bold text-zinc-100">Simulation Lab</h1>
         <p className="text-xs text-zinc-500 mt-0.5">
-          Select a ticker to overlay all logged algorithm signals on its price chart.
+          Select a ticker to simulate buying/shorting and track live P&amp;L with stop loss.
         </p>
       </div>
 
@@ -46,18 +46,18 @@ export default function SimulationPage() {
 
         <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-4 text-xs text-zinc-500 space-y-1.5">
           <p className="text-zinc-300 font-medium">How it works:</p>
-          <p>1. The algorithm processes live news for all 25 tracked tickers every 5 minutes.</p>
-          <p>2. Each signal (LONG/SHORT/NO_TRADE) is logged with its timestamp and score.</p>
-          <p>3. In simulation mode, all logged signals are overlaid on the price chart as colored lines.</p>
-          <p>4. Green ▲ lines = LONG signals, Red ▼ lines = SHORT signals.</p>
-          <p>5. Compare where signals fired vs. subsequent price movement to evaluate accuracy.</p>
+          <p>1. The algorithm logs LONG/SHORT signals every few minutes for 25 tickers.</p>
+          <p>2. Open the &quot;⚗ Simulate&quot; tab on any stock page to see signals on the chart.</p>
+          <p>3. Click &quot;Buy (Paper)&quot; or &quot;Short (Paper)&quot; to open a simulated position.</p>
+          <p>4. Set a custom stop loss or use the algorithm-suggested one.</p>
+          <p>5. Live P&amp;L updates every 15 seconds. Close the trade manually at any time.</p>
         </div>
 
         <button
           onClick={launch}
           className="w-full rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-semibold py-3 transition-colors"
         >
-          Open {ticker} in Simulation Mode →
+          Open {ticker} → Simulate Tab
         </button>
       </div>
     </div>

@@ -63,11 +63,37 @@ export async function analyzeNews(payload: {
   });
 }
 
+export type PaperPosition = {
+  id: string;
+  ticker: string;
+  direction: "LONG" | "SHORT";
+  entry_time: string;
+  entry_price: number;
+  position_size: number;
+  stop_loss: number;
+  take_profit: number;
+  status: "OPEN";
+  decision_id: string | null;
+  current_price?: number;
+  live_pnl?: number;
+  live_pnl_pct?: number;
+};
+
+/** GET /api/paper-trade/open — all open positions */
+export async function fetchOpenPositions(): Promise<PaperPosition[]> {
+  return apiFetch<PaperPosition[]>("/api/paper-trade/open");
+}
+
+/** GET /api/paper-trade/position/:ticker — open position for one ticker (null if none) */
+export async function fetchPositionForTicker(ticker: string): Promise<PaperPosition | null> {
+  return apiFetch<PaperPosition | null>(`/api/paper-trade/position/${ticker.toUpperCase()}`);
+}
+
 /** POST /api/paper-trade/open */
-export async function openPaperTrade(decisionId: string): Promise<{ trade_id: string }> {
+export async function openPaperTrade(decisionId: string, customStopLoss?: number): Promise<PaperPosition> {
   return apiFetch("/api/paper-trade/open", {
     method: "POST",
-    body: JSON.stringify({ decision_id: decisionId }),
+    body: JSON.stringify({ decision_id: decisionId, custom_stop_loss: customStopLoss ?? null }),
   });
 }
 

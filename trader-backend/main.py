@@ -98,7 +98,8 @@ class AnalyzeNewsRequest(BaseModel):
     candidate_tickers: List[str] = []
 
 class OpenTradeRequest(BaseModel):
-    decision_id: str
+    decision_id:      str
+    custom_stop_loss: Optional[float] = None
 
 class CloseTradeRequest(BaseModel):
     trade_id:    str
@@ -191,17 +192,47 @@ def get_trade_history():
     return paper_broker.all_trades_as_history()
 
 
+@app.get("/api/paper-trade/open")
+def get_open_positions():
+    """Return all currently open paper positions."""
+    return paper_broker.open_positions
+
+
+@app.get("/api/paper-trade/position/{ticker}")
+def get_position_for_ticker(ticker: str):
+    """Return the open paper position for a specific ticker, or null."""
+    t = ticker.upper()
+    pos = next((p for p in paper_broker.open_positions if p["ticker"] == t), None)
+    if not pos:
+        return None
+    # Enrich with live P&L
+    md = mdp.get_market_data(t)
+    current_price = md.price
+    entry = pos["entry_price"]
+    size  = pos["position_size"]
+    direction = pos["direction"]
+    pnl = round((current_price - entry) * size * (1 if direction == "LONG" else -1), 2)
+    pnl_pct = round((current_price - entry) / entry * 100 * (1 if direction == "LONG" else -1), 3)
+    return {**pos, "current_price": current_price, "live_pnl": pnl, "live_pnl_pct": pnl_pct}
+
+
 @app.post("/api/paper-trade/open")
 def open_paper_trade(req: OpenTradeRequest):
     """
     Manually open a paper trade from a previous decision.
-    The decision must have trade_allowed=True.
+    Optionally override the algorithm-suggested stop loss.
     """
     decision = trade_logger.get_by_id(req.decision_id)
     if not decision:
         raise HTTPException(status_code=404, detail="Decision not found")
     if not decision.get("trade_allowed"):
         raise HTTPException(status_code=400, detail="Trade not allowed for this decision")
+
+    # Allow custom stop loss override
+    if req.custom_stop_loss is not None and decision.get("trade_plan"):
+        decision = dict(decision)
+        decision["trade_plan"] = dict(decision["trade_plan"])
+        decision["trade_plan"]["stop_loss"] = req.custom_stop_loss
 
     position = paper_broker.open_position(decision)
     if not position:
