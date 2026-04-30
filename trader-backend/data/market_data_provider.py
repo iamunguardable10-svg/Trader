@@ -1,10 +1,11 @@
 """
 Real market data via yfinance.
-Falls back to cached values if the network call fails so the algorithm
-never crashes during a fetch error.
+All results are TTL-cached to avoid hammering Yahoo Finance on every request.
+Falls back to stale cache (or defaults) on network errors.
 """
 import logging
-from datetime import datetime, timedelta
+import time
+from datetime import timedelta
 
 import yfinance as yf
 
@@ -12,8 +13,21 @@ from models.market import MarketData
 
 logger = logging.getLogger(__name__)
 
-# Last-known-good cache: ticker → MarketData
-_cache: dict[str, MarketData] = {}
+# ── cache stores ──────────────────────────────────────────────────────────────
+
+# MarketData cache: ticker → (MarketData, fetched_at_unix)
+_md_cache:    dict[str, tuple[MarketData, float]] = {}
+MD_TTL = 60          # seconds
+
+# Chart cache: (ticker, period, interval) → (bars, fetched_at_unix)
+_chart_cache: dict[tuple, tuple[list, float]] = {}
+# shorter TTL for intraday, longer for multi-day views
+_CHART_TTL: dict[str, int] = {
+    "1d":  120,   # 2 min — intraday bars change frequently
+    "5d":  300,   # 5 min
+    "1mo": 600,   # 10 min
+    "3mo": 900,   # 15 min
+}
 
 
 def _safe_float(val, default: float = 0.0) -> float:
@@ -26,13 +40,17 @@ def _safe_float(val, default: float = 0.0) -> float:
 class MarketDataProvider:
     def get_market_data(self, ticker: str) -> MarketData:
         ticker = ticker.upper()
+        now = time.monotonic()
+        cached = _md_cache.get(ticker)
+        if cached and (now - cached[1]) < MD_TTL:
+            return cached[0]
         try:
             data = self._fetch(ticker)
-            _cache[ticker] = data
+            _md_cache[ticker] = (data, now)
             return data
         except Exception as exc:
             logger.warning(f"[MarketData] yfinance failed for {ticker}: {exc} — using cache/defaults")
-            return _cache.get(ticker, self._defaults(ticker))
+            return (cached[0] if cached else self._defaults(ticker))
 
     def _fetch(self, ticker: str) -> MarketData:
         t = yf.Ticker(ticker)
@@ -50,9 +68,9 @@ class MarketDataProvider:
         vwap          = price
 
         if len(bars) >= 4:
-            closes       = bars["Close"].values
-            price_5m_pct = (closes[-1] - closes[-2]) / closes[-2] * 100 if closes[-2] else 0.0
-            price_15m_pct= (closes[-1] - closes[-4]) / closes[-4] * 100 if closes[-4] else 0.0
+            closes        = bars["Close"].values
+            price_5m_pct  = (closes[-1] - closes[-2]) / closes[-2] * 100 if closes[-2] else 0.0
+            price_15m_pct = (closes[-1] - closes[-4]) / closes[-4] * 100 if closes[-4] else 0.0
 
             highs  = bars["High"].values
             lows   = bars["Low"].values
@@ -83,7 +101,7 @@ class MarketDataProvider:
             price_change_15m_pct=round(price_15m_pct, 3),
             relative_volume=round(rel_vol, 2),
             avg_daily_volume=int(avg_vol),
-            spread_pct=0.03,            # bid/ask spread not available via yfinance
+            spread_pct=0.03,
             gap_pct=round(gap_pct, 2),
             atr=round(atr, 4),
             atr_pct=round(atr_pct, 3),
@@ -104,9 +122,18 @@ class MarketDataProvider:
 
 
 def get_chart_data(ticker: str, period: str = "1d", interval: str = "5m") -> list[dict]:
-    """Return OHLCV bars for charting. Used by /api/chart/{ticker}."""
+    """Return OHLCV bars for charting. Results are TTL-cached per (ticker, period, interval)."""
+    ticker = ticker.upper()
+    key    = (ticker, period, interval)
+    ttl    = _CHART_TTL.get(period, 300)
+    now    = time.monotonic()
+
+    cached = _chart_cache.get(key)
+    if cached and (now - cached[1]) < ttl:
+        return cached[0]
+
     try:
-        bars = yf.Ticker(ticker.upper()).history(period=period, interval=interval)
+        bars = yf.Ticker(ticker).history(period=period, interval=interval)
         result = []
         for ts, row in bars.iterrows():
             result.append({
@@ -117,7 +144,8 @@ def get_chart_data(ticker: str, period: str = "1d", interval: str = "5m") -> lis
                 "close":  round(float(row["Close"]),  2),
                 "volume": int(row["Volume"]),
             })
+        _chart_cache[key] = (result, now)
         return result
     except Exception as exc:
         logger.warning(f"[Chart] Failed for {ticker}: {exc}")
-        return []
+        return (cached[0] if cached else [])
