@@ -1,13 +1,14 @@
 RISK_CONFIG = {
     "account_equity": 10_000,
 
-    # Risk per trade
-    "risk_per_trade_pct":    0.0025,   # 0.25%
-    "max_position_size_pct": 0.02,     # 2% of account
+    # Risk per trade — 1% of account = $100 max loss per trade
+    "risk_per_trade_pct":    0.01,    # 1%
+    # Max position value = 15% of account ($1 500) so P&L is meaningful
+    "max_position_size_pct": 0.15,    # 15%
 
     # Daily / weekly limits
-    "max_daily_loss_pct":   0.01,      # 1%
-    "max_weekly_loss_pct":  0.03,      # 3%
+    "max_daily_loss_pct":   0.02,      # 2%
+    "max_weekly_loss_pct":  0.06,      # 6%
 
     # Trade limits
     "max_trades_per_day":   5,
@@ -17,12 +18,15 @@ RISK_CONFIG = {
     "cooldown_after_loss_minutes": 30,
 
     # Exits
-    "stop_loss_atr_multiplier":      1.2,
+    # ATR here comes from 5-min bars — use 2.5× so the stop has room to breathe
+    "stop_loss_atr_multiplier":      2.5,
+    # Hard floor: stop distance is never less than 0.5 % of entry price
+    "min_stop_loss_pct":             0.005,
     "take_profit_r_multiple":        2.0,
     "trailing_stop_enabled":         True,
     "trailing_stop_after_r":         1.0,
     "trailing_stop_atr_multiplier":  1.0,
-    "max_hold_minutes":              45,
+    "max_hold_minutes":              60,
 
     # Safety
     "kill_switch_enabled":        True,

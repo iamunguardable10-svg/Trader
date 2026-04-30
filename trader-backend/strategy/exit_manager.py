@@ -15,13 +15,17 @@ class ExitManager:
         atr   = market_data.atr
         rcfg  = RISK_CONFIG
 
+        atr_dist = atr * rcfg["stop_loss_atr_multiplier"]
+        min_dist = entry * rcfg.get("min_stop_loss_pct", 0.005)
+        stop_dist = max(atr_dist, min_dist)          # always at least 0.5% away
+
         if direction == "LONG":
-            stop_loss   = entry - atr * rcfg["stop_loss_atr_multiplier"]
-            risk_share  = entry - stop_loss
+            stop_loss   = entry - stop_dist
+            risk_share  = stop_dist
             take_profit = entry + risk_share * rcfg["take_profit_r_multiple"]
         elif direction == "SHORT":
-            stop_loss   = entry + atr * rcfg["stop_loss_atr_multiplier"]
-            risk_share  = stop_loss - entry
+            stop_loss   = entry + stop_dist
+            risk_share  = stop_dist
             take_profit = entry - risk_share * rcfg["take_profit_r_multiple"]
         else:
             return {
