@@ -206,6 +206,57 @@ def _mock_analyze(news_item: NewsItem, entity_data: EntityData) -> LLMNewsAnalys
 
 
 # ---------------------------------------------------------------------------
+# Output validation — normalises whatever the LLM returns
+# ---------------------------------------------------------------------------
+
+_VALID_BIASES     = {"bullish", "bearish", "neutral"}
+_VALID_HORIZONS   = {"intraday", "swing", "long_term", "unclear"}
+_VALID_EVENTS     = set(EVENT_WEIGHTS.keys())
+
+
+def _clamp(val: float, lo: float = 0.0, hi: float = 1.0) -> float:
+    return max(lo, min(hi, val))
+
+
+def _parse_response(data: dict) -> LLMNewsAnalysis:
+    """Validate and normalise a raw LLM JSON dict into LLMNewsAnalysis."""
+    bias = str(data.get("directional_bias", "neutral")).lower().strip()
+    if bias not in _VALID_BIASES:
+        # Map common variants
+        if bias in ("positive", "up", "bullish outlook"):   bias = "bullish"
+        elif bias in ("negative", "down", "bearish outlook"): bias = "bearish"
+        else:                                                 bias = "neutral"
+
+    event = str(data.get("event_type", "unknown")).lower().strip()
+    if event not in _VALID_EVENTS:
+        event = "unknown"
+
+    horizon = str(data.get("impact_time_horizon", "intraday")).lower().strip()
+    if horizon not in _VALID_HORIZONS:
+        horizon = "intraday"
+
+    importance     = _clamp(float(data.get("importance",     0.5)))
+    confidence     = _clamp(float(data.get("confidence",     0.5)))
+    surprise_level = _clamp(float(data.get("surprise_level", 0.5)))
+
+    key_risks = data.get("key_risks", [])
+    if not isinstance(key_risks, list):
+        key_risks = [str(key_risks)]
+
+    return LLMNewsAnalysis(
+        event_type=event,
+        directional_bias=bias,
+        impact_time_horizon=horizon,
+        importance=round(importance, 3),
+        confidence=round(confidence, 3),
+        surprise_level=round(surprise_level, 3),
+        reasoning_summary=str(data.get("reasoning_summary", ""))[:500],
+        key_risks=key_risks[:5],
+        needs_human_review=bool(data.get("needs_human_review", False)),
+    )
+
+
+# ---------------------------------------------------------------------------
 # Real LLM call (OpenAI or Groq — both use OpenAI-compatible API)
 # ---------------------------------------------------------------------------
 
@@ -230,30 +281,21 @@ def _llm_analyze(news_item: NewsItem, entity_data: EntityData) -> LLMNewsAnalysi
 
     response = client.chat.completions.create(
         model=model,
-        messages=[{"role": "user", "content": prompt}],
-        temperature=0.2,
-        max_tokens=600,
+        messages=[
+            {
+                "role": "system",
+                "content": "You are a financial news analysis engine. Always respond with valid JSON only. No markdown, no explanation, no extra text.",
+            },
+            {"role": "user", "content": prompt},
+        ],
+        temperature=0.1,
+        max_tokens=500,
+        response_format={"type": "json_object"},  # enforces JSON output on both Groq + OpenAI
     )
 
-    raw = response.choices[0].message.content.strip()
-
-    # Strip markdown code fences if present
-    raw = re.sub(r"^```(?:json)?\s*", "", raw)
-    raw = re.sub(r"\s*```$", "", raw)
-
+    raw  = response.choices[0].message.content.strip()
     data = json.loads(raw)
-
-    return LLMNewsAnalysis(
-        event_type=data.get("event_type", "unknown"),
-        directional_bias=data.get("directional_bias", "neutral"),
-        impact_time_horizon=data.get("impact_time_horizon", "intraday"),
-        importance=float(data.get("importance", 0.5)),
-        confidence=float(data.get("confidence", 0.5)),
-        surprise_level=float(data.get("surprise_level", 0.5)),
-        reasoning_summary=data.get("reasoning_summary", ""),
-        key_risks=data.get("key_risks", []),
-        needs_human_review=bool(data.get("needs_human_review", False)),
-    )
+    return _parse_response(data)
 
 
 # ---------------------------------------------------------------------------
