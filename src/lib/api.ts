@@ -139,3 +139,44 @@ export async function fetchChartData(
 ): Promise<OHLCVBar[]> {
   return apiFetch<OHLCVBar[]>(`/api/chart/${ticker}?period=${period}&interval=${interval}`);
 }
+
+// ── Dev / Testing ─────────────────────────────────────────────────────────────
+
+export type DevScoreResult = {
+  decision: string;
+  strength: string;
+  final_score: number;
+  trade_allowed: boolean;
+  blocking_reasons: string[];
+  scores: Record<string, number>;
+  news: { event_type: string; directional_bias: string; importance: number; confidence: number; surprise_level: number; reasoning_summary: string };
+  market_data: Record<string, number> | null;
+  technical_data: Record<string, number | boolean | string> | null;
+  market_context: Record<string, string | number> | null;
+};
+
+/** POST /api/dev/score — run algorithm on a headline without logging */
+export async function devScore(headline: string, ticker: string, body = ""): Promise<DevScoreResult> {
+  return apiFetch<DevScoreResult>("/api/dev/score", {
+    method: "POST",
+    body: JSON.stringify({ headline, ticker, body }),
+  });
+}
+
+export type BacktestResult = {
+  ticker: string; direction: string; logged_at: string;
+  entry_price: number; ret_15m: number | null; ret_30m: number | null; ret_45m: number | null;
+  correct_15m: boolean | null; correct_45m: boolean | null;
+  score: number; strength: string;
+};
+
+export type BacktestResponse = {
+  signals: number; evaluated: number;
+  summary: { win_rate_45m: number | null; avg_return_45m: number; wins: number; losses: number };
+  results: BacktestResult[];
+};
+
+/** GET /api/backtest */
+export async function fetchBacktest(limit = 200): Promise<BacktestResponse> {
+  return apiFetch<BacktestResponse>(`/api/backtest?limit=${limit}`);
+}

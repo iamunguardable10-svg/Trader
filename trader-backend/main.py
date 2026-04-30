@@ -286,6 +286,125 @@ def get_chart(ticker: str, period: str = "1d", interval: str = "5m"):
 
 # ── dev helpers ───────────────────────────────────────────────────────────────
 
+class DevScoreRequest(BaseModel):
+    headline: str
+    ticker:   str
+    body:     str = ""
+    source:   str = "manual"
+
+@app.post("/api/dev/score")
+def dev_score(req: DevScoreRequest):
+    """
+    Run the full algorithm on a headline without deduplication or logging.
+    Returns every intermediate score and blocking reason — useful for tuning.
+    """
+    news_item = NewsItem(
+        source            = req.source,
+        headline          = req.headline,
+        body              = req.body,
+        published_at      = datetime.utcnow(),
+        received_at       = datetime.utcnow(),
+        url               = None,
+        candidate_tickers = [req.ticker.upper()],
+    )
+    return algorithm.score_news_debug(news_item, _portfolio)
+
+
+@app.get("/api/backtest")
+def backtest(limit: int = 200):
+    """
+    Replay all logged LONG/SHORT signals against intraday price data.
+    For each signal, check whether the price moved in the right direction
+    at +15 min, +30 min, and +45 min horizons.
+    """
+    import yfinance as yf
+    from datetime import timezone
+
+    decisions = trade_logger.get_all()
+    actionable = [
+        d for d in decisions
+        if d.get("decision") in ("LONG", "SHORT") and d.get("ticker")
+    ][:limit]
+
+    if not actionable:
+        return {"signals": 0, "results": [], "summary": {}}
+
+    results = []
+    for d in actionable:
+        ticker    = d["ticker"]
+        direction = d["decision"]
+        logged_at = d.get("logged_at")
+        entry_px  = (d.get("trade_plan") or {}).get("entry_price") or (d.get("market_data") or {}).get("price")
+
+        if not logged_at or not entry_px:
+            continue
+
+        try:
+            signal_time = datetime.fromisoformat(logged_at)
+        except Exception:
+            continue
+
+        try:
+            bars = yf.Ticker(ticker).history(period="5d", interval="5m")
+            if bars.empty:
+                continue
+
+            bars.index = bars.index.tz_localize(None) if bars.index.tzinfo is None else bars.index.tz_convert(None)
+            signal_naive = signal_time.replace(tzinfo=None)
+
+            # find bar index closest to signal time
+            diffs = [(abs((ts - signal_naive).total_seconds()), i) for i, ts in enumerate(bars.index)]
+            diffs.sort()
+            base_idx = diffs[0][1]
+            closes   = bars["Close"].tolist()
+
+            def ret_at(offset_bars: int) -> float | None:
+                idx = base_idx + offset_bars
+                if idx >= len(closes):
+                    return None
+                return round((closes[idx] - entry_px) / entry_px * 100, 3)
+
+            r15 = ret_at(3)   # 3 × 5m = 15 min
+            r30 = ret_at(6)
+            r45 = ret_at(9)
+
+            correct_15 = None if r15 is None else (r15 > 0 if direction == "LONG" else r15 < 0)
+            correct_45 = None if r45 is None else (r45 > 0 if direction == "LONG" else r45 < 0)
+
+            results.append({
+                "ticker":      ticker,
+                "direction":   direction,
+                "logged_at":   logged_at,
+                "entry_price": entry_px,
+                "ret_15m":     r15,
+                "ret_30m":     r30,
+                "ret_45m":     r45,
+                "correct_15m": correct_15,
+                "correct_45m": correct_45,
+                "score":       d.get("final_score"),
+                "strength":    d.get("strength"),
+            })
+        except Exception:
+            continue
+
+    evaluated = [r for r in results if r["correct_45m"] is not None]
+    wins  = sum(1 for r in evaluated if r["correct_45m"])
+    total = len(evaluated)
+    avg_ret = round(sum(r["ret_45m"] for r in evaluated) / total, 3) if total else 0.0
+
+    return {
+        "signals":   len(actionable),
+        "evaluated": total,
+        "summary": {
+            "win_rate_45m":   round(wins / total * 100, 1) if total else None,
+            "avg_return_45m": avg_ret,
+            "wins":           wins,
+            "losses":         total - wins,
+        },
+        "results": results,
+    }
+
+
 @app.post("/api/dev/reset")
 def dev_reset():
     """Reset all in-memory state (dev use only)."""

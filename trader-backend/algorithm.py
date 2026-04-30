@@ -39,12 +39,18 @@ class TradingAlgorithm:
 
     # ── main entry point ────────────────────────────────────────────────────
 
+    def score_news_debug(self, news_item: NewsItem, portfolio_state: PortfolioState) -> dict:
+        """Like process_news but skips duplicate filter and trade logger — for dev/testing."""
+        return self._run_pipeline(news_item, portfolio_state, log=False)
+
     def process_news(self, news_item: NewsItem, portfolio_state: PortfolioState) -> dict:
         # 1. Duplicate check
         if self.duplicate_filter.is_duplicate(news_item):
             return self._no_trade(news_item, "Duplicate news — already processed")
+        return self._run_pipeline(news_item, portfolio_state, log=True)
 
-        # 2. Entity resolution
+    def _run_pipeline(self, news_item: NewsItem, portfolio_state: PortfolioState, log: bool) -> dict:
+        # Entity resolution
         entity_data = self.entity_resolver.resolve(news_item)
         if not entity_data.primary_ticker:
             return self._no_trade(news_item, "No tradable ticker found")
@@ -77,10 +83,10 @@ class TradingAlgorithm:
                 blocking_reasons=["Final score not strong enough"],
                 trade_plan=None, exit_plan=None,
             )
-            self.trade_logger.log_paper_signal(decision)
+            if log: self.trade_logger.log_paper_signal(decision)
             return decision
 
-        # 9. Risk validation
+        # Risk validation
         risk_check = self.risk_manager.validate(
             llm_analysis, market_data, portfolio_state, final_score, direction
         )
@@ -94,10 +100,10 @@ class TradingAlgorithm:
                 blocking_reasons=risk_check["blocking_reasons"],
                 trade_plan=None, exit_plan=None,
             )
-            self.trade_logger.log_paper_signal(decision)
+            if log: self.trade_logger.log_paper_signal(decision)
             return decision
 
-        # 10. Trade plan
+        # Trade plan
         trade_plan = self.exit_manager.create_trade_plan(
             direction, market_data, portfolio_state.account_equity, self.position_sizer
         )
@@ -111,13 +117,11 @@ class TradingAlgorithm:
                 blocking_reasons=["Position size is zero (risk too small)"],
                 trade_plan=trade_plan, exit_plan=None,
             )
-            self.trade_logger.log_paper_signal(decision)
+            if log: self.trade_logger.log_paper_signal(decision)
             return decision
 
-        # 11. Exit plan
         exit_plan = self.exit_manager.create_exit_plan()
 
-        # 12. Final decision
         decision = self._full_response(
             news_item, entity_data, llm_analysis, market_data,
             technical_data, market_context, scores,
@@ -125,7 +129,7 @@ class TradingAlgorithm:
             trade_allowed=True, blocking_reasons=[],
             trade_plan=trade_plan, exit_plan=exit_plan,
         )
-        self.trade_logger.log_paper_signal(decision)
+        if log: self.trade_logger.log_paper_signal(decision)
         return decision
 
     # ── response builders ───────────────────────────────────────────────────

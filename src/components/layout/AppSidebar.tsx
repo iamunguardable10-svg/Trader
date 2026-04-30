@@ -88,6 +88,8 @@ export function AppSidebar({ backendOnline }: { backendOnline?: boolean }) {
     { href: "/watchlist",   label: "Watchlist",      icon: "★" },
     { href: "/simulation",  label: "Simulation Lab", icon: "⚗" },
     { href: "/performance", label: "Performance",    icon: "📊" },
+    { href: "/backtest",    label: "Backtest",       icon: "⏱" },
+    { href: "/debug",       label: "Score Tester",   icon: "🔬" },
   ];
 
   return (
