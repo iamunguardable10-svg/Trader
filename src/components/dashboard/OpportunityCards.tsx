@@ -42,10 +42,24 @@ const EVENT_LABELS: Record<string, string> = {
 type Props = { signals: TradeDecision[] };
 
 export function OpportunityCards({ signals }: Props) {
-  // Top 5: LONG and SHORT with highest absolute score, trade_allowed preferred
-  const top = [...signals]
-    .filter((s) => s.decision !== "NO_TRADE" && s.ticker)
-    .sort((a, b) => Math.abs(b.final_score) - Math.abs(a.final_score))
+  // Best signal per ticker: prefer trade_allowed, then highest absolute score
+  const byTicker = new Map<string, TradeDecision>();
+  for (const s of signals) {
+    if (s.decision === "NO_TRADE" || !s.ticker) continue;
+    const prev = byTicker.get(s.ticker);
+    if (!prev) { byTicker.set(s.ticker, s); continue; }
+    // Prefer trade_allowed; tie-break by absolute score
+    const better =
+      (s.trade_allowed && !prev.trade_allowed) ||
+      (s.trade_allowed === prev.trade_allowed && Math.abs(s.final_score) > Math.abs(prev.final_score));
+    if (better) byTicker.set(s.ticker, s);
+  }
+  const top = [...byTicker.values()]
+    .sort((a, b) => {
+      // trade_allowed first, then by absolute score
+      if (a.trade_allowed !== b.trade_allowed) return a.trade_allowed ? -1 : 1;
+      return Math.abs(b.final_score) - Math.abs(a.final_score);
+    })
     .slice(0, 5);
 
   if (top.length === 0) return null;
@@ -71,11 +85,18 @@ export function OpportunityCards({ signals }: Props) {
             <Link
               key={s.id ?? i}
               href={`/stock/${s.ticker}`}
-              className={`rounded-xl border p-3 transition-all hover:scale-[1.02] hover:shadow-lg
-                ${up
-                  ? "border-emerald-500/30 bg-emerald-500/5 hover:border-emerald-500/50"
-                  : "border-red-500/30 bg-red-500/5 hover:border-red-500/50"}`}
+              className={`rounded-xl border p-3 transition-all hover:scale-[1.02] hover:shadow-lg relative
+                ${!s.trade_allowed
+                  ? "border-zinc-700 bg-zinc-900/40 opacity-70"
+                  : up
+                    ? "border-emerald-500/30 bg-emerald-500/5 hover:border-emerald-500/50"
+                    : "border-red-500/30 bg-red-500/5 hover:border-red-500/50"}`}
             >
+              {!s.trade_allowed && (
+                <span className="absolute top-2 right-2 rounded bg-zinc-700 px-1.5 py-0.5 text-xs text-zinc-400">
+                  blocked
+                </span>
+              )}
               <div className="mb-1">
                 <p className="text-base font-black text-zinc-100">{s.ticker}</p>
                 <p className="text-xs text-zinc-500 truncate">{s.company ?? ""}</p>
@@ -95,7 +116,7 @@ export function OpportunityCards({ signals }: Props) {
                 <span className="rounded bg-zinc-800 px-1.5 py-0.5 text-xs text-zinc-400">
                   {eventLabel}
                 </span>
-                {confidencePct >= 80 && (
+                {s.trade_allowed && confidencePct >= 80 && (
                   <span className="rounded bg-emerald-500/10 border border-emerald-500/20 px-1.5 py-0.5 text-xs text-emerald-400">
                     High Confidence
                   </span>
