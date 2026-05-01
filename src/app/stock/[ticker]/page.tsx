@@ -59,7 +59,9 @@ function ScoreGauge({ score }: { score: number }) {
   const norm = Math.max(-100, Math.min(100, score));
   const pct  = (norm + 100) / 200;
   const angle = pct * 180 - 90;
-  const rad   = (angle * Math.PI) / 180;
+  // Match the same -90° offset the arc() helper uses so needle tip
+  // lands exactly at the end of the coloured arc.
+  const rad    = ((angle - 90) * Math.PI) / 180;
   const r = 54;
   const cx = 70, cy = 70;
   const needleX = cx + r * Math.cos(rad);
