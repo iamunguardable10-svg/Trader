@@ -6,3 +6,4 @@ apscheduler>=3.10.0
 feedparser>=6.0.11
 yfinance>=0.2.40
 alpaca-py>=0.26.0
+websockets>=12.0

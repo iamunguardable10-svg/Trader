@@ -1,4 +1,20 @@
+"""
+Entity Resolver
+
+Resolves a news item or ticker string to EntityData (ticker, company, sector, industry).
+
+Priority:
+  1. Static map — instant, no network call, covers well-known large-caps
+  2. yfinance lookup — for any ticker not in the static map (cached in-process)
+  3. Minimal fallback — returns the ticker with Unknown sector so the pipeline
+     can still run rather than silently dropping the news
+"""
+import logging
+from functools import lru_cache
+
 from models.news import EntityData, NewsItem
+
+logger = logging.getLogger(__name__)
 
 _TICKER_MAP: dict[str, dict] = {
     # Mega-cap tech
@@ -31,47 +47,81 @@ _TICKER_MAP: dict[str, dict] = {
     "PYPL":  {"company_name": "PayPal Holdings Inc.",     "sector": "Financial Services",      "industry": "Payment Processing"},
     "COIN":  {"company_name": "Coinbase Global Inc.",     "sector": "Financial Services",      "industry": "Crypto Exchange"},
     "SQ":    {"company_name": "Block Inc.",               "sector": "Financial Services",      "industry": "Payment Processing"},
+    # Finance — large-cap banks
+    "JPM":   {"company_name": "JPMorgan Chase & Co.",     "sector": "Financial Services",      "industry": "Banks"},
+    "GS":    {"company_name": "Goldman Sachs Group",      "sector": "Financial Services",      "industry": "Investment Banking"},
+    "MS":    {"company_name": "Morgan Stanley",           "sector": "Financial Services",      "industry": "Investment Banking"},
+    "BAC":   {"company_name": "Bank of America Corp.",    "sector": "Financial Services",      "industry": "Banks"},
+    # Healthcare
+    "JNJ":   {"company_name": "Johnson & Johnson",        "sector": "Healthcare",              "industry": "Drug Manufacturers"},
+    "UNH":   {"company_name": "UnitedHealth Group",       "sector": "Healthcare",              "industry": "Health Insurance"},
+    "PFE":   {"company_name": "Pfizer Inc.",              "sector": "Healthcare",              "industry": "Drug Manufacturers"},
+    "ABBV":  {"company_name": "AbbVie Inc.",              "sector": "Healthcare",              "industry": "Drug Manufacturers"},
+    # Energy
+    "XOM":   {"company_name": "Exxon Mobil Corporation",  "sector": "Energy",                  "industry": "Oil & Gas"},
+    "CVX":   {"company_name": "Chevron Corporation",      "sector": "Energy",                  "industry": "Oil & Gas"},
+    # Consumer Staples
+    "WMT":   {"company_name": "Walmart Inc.",             "sector": "Consumer Defensive",      "industry": "Discount Stores"},
+    "COST":  {"company_name": "Costco Wholesale Corp.",   "sector": "Consumer Defensive",      "industry": "Discount Stores"},
+    # Industrials
+    "CAT":   {"company_name": "Caterpillar Inc.",         "sector": "Industrials",             "industry": "Farm & Heavy Construction"},
+    "BA":    {"company_name": "Boeing Company",           "sector": "Industrials",             "industry": "Aerospace & Defense"},
 }
 
 KNOWN_TICKERS = list(_TICKER_MAP.keys())
 
 
+@lru_cache(maxsize=512)
+def _lookup_via_yfinance(ticker: str) -> dict:
+    """Fetch company info for unknown tickers. Result is cached in-process."""
+    try:
+        import yfinance as yf
+        info = yf.Ticker(ticker).fast_info
+        # fast_info doesn't have sector — fall back to full info for that
+        full = yf.Ticker(ticker).info
+        return {
+            "company_name": full.get("longName") or full.get("shortName") or ticker,
+            "sector":       full.get("sector") or "Unknown",
+            "industry":     full.get("industry") or "Unknown",
+        }
+    except Exception as exc:
+        logger.debug(f"[EntityResolver] yfinance lookup failed for {ticker}: {exc}")
+        return {"company_name": ticker, "sector": "Unknown", "industry": "Unknown"}
+
+
 class EntityResolver:
     def resolve_ticker(self, ticker: str) -> EntityData | None:
-        """Directly resolve a known ticker string to EntityData."""
-        t = ticker.upper()
-        data = _TICKER_MAP.get(t, {})
-        if not data:
-            return None
+        t    = ticker.upper()
+        data = _TICKER_MAP.get(t) or _lookup_via_yfinance(t)
         return EntityData(
-            primary_ticker=t,
-            company_name=data.get("company_name"),
-            related_tickers=[],
-            sector=data.get("sector"),
-            industry=data.get("industry"),
+            primary_ticker = t,
+            company_name   = data["company_name"],
+            related_tickers= [],
+            sector         = data["sector"],
+            industry       = data["industry"],
         )
 
     def tickers_for_sector(self, sector: str) -> list[str]:
-        """Return all watched tickers that belong to the given sector."""
         return [t for t, d in _TICKER_MAP.items() if d.get("sector") == sector]
 
     def resolve(self, news_item: NewsItem) -> EntityData:
-        ticker = None
-        for t in news_item.candidate_tickers:
-            if t.upper() in _TICKER_MAP:
-                ticker = t.upper()
-                break
-
-        # Fallback: first candidate even if not in map
-        if not ticker and news_item.candidate_tickers:
-            ticker = news_item.candidate_tickers[0].upper()
-
-        data = _TICKER_MAP.get(ticker or "", {})
+        for raw in news_item.candidate_tickers:
+            t = raw.upper()
+            if len(t) > 5 or not t.isalpha():
+                continue
+            data = _TICKER_MAP.get(t) or _lookup_via_yfinance(t)
+            return EntityData(
+                primary_ticker = t,
+                company_name   = data["company_name"],
+                related_tickers= [],
+                sector         = data["sector"],
+                industry       = data["industry"],
+            )
 
         return EntityData(
-            primary_ticker=ticker,
-            company_name=data.get("company_name"),
-            related_tickers=[],
-            sector=data.get("sector"),
-            industry=data.get("industry"),
+            primary_ticker  = None,
+            company_name    = None,
+            related_tickers = [],
+            sector          = None,
+            industry        = None,
         )

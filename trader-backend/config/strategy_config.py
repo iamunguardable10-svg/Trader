@@ -28,5 +28,5 @@ STRATEGY_CONFIG = {
     # Mode
     "mode":        "paper",
     "allow_long":  True,
-    "allow_short": True,
+    "allow_short": False,
 }
