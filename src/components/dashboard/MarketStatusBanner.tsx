@@ -1,9 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { fetchMarketStatus, MarketStatus } from "@/lib/api";
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL;
+import { useData } from "@/contexts/DataContext";
 
 const SESSION_STYLE: Record<string, { bar: string; dot: string; label: string }> = {
   regular: { bar: "border-emerald-500/20 bg-emerald-500/5",  dot: "bg-emerald-400", label: "text-emerald-400" },
@@ -12,47 +9,29 @@ const SESSION_STYLE: Record<string, { bar: string; dot: string; label: string }>
   closed:  { bar: "border-amber-500/20 bg-amber-500/5",      dot: "bg-amber-400", label: "text-amber-400" },
 };
 
+const REASON_LABEL: Record<string, string> = {
+  "Weekend":       "Weekend — Market closed",
+  "Market Holiday":"Holiday — Market closed",
+  "Pre-Market":    "Pre-Market",
+  "After Hours":   "After Hours",
+  "Closed":        "Market closed",
+};
+
+const REASON_HINT: Record<string, string> = {
+  "Weekend":       "NYSE reopens Monday at 09:30 ET.",
+  "Market Holiday":"Today is a US market holiday. Signals are informational only.",
+  "Pre-Market":    "Regular trading starts at 09:30 ET. Signals may still change.",
+  "After Hours":   "Regular trading has ended. Prices and signals reflect after-hours.",
+  "Closed":        "Market is currently closed.",
+};
+
 export function MarketStatusBanner() {
-  const [status, setStatus] = useState<MarketStatus | null>(null);
-
-  useEffect(() => {
-    if (!API_URL) return;
-    let cancelled = false;
-
-    async function load() {
-      try {
-        const s = await fetchMarketStatus();
-        if (!cancelled) setStatus(s);
-      } catch { /* ignore */ }
-    }
-
-    load();
-    // Refresh every 60 s — market open/close doesn't change faster
-    const id = setInterval(load, 60_000);
-    return () => { cancelled = true; clearInterval(id); };
-  }, []);
+  const { marketStatus: status } = useData();
 
   if (!status) return null;
-  // Don't show a banner while market is open — it's the default state
   if (status.is_open) return null;
 
   const style = SESSION_STYLE[status.session] ?? SESSION_STYLE.closed;
-
-  const REASON_LABEL: Record<string, string> = {
-    "Weekend":       "Wochenende — Markt geschlossen",
-    "Market Holiday":"Feiertag — Markt geschlossen",
-    "Pre-Market":    "Pre-Market",
-    "After Hours":   "After Hours",
-    "Closed":        "Markt geschlossen",
-  };
-
-  const hint: Record<string, string> = {
-    "Weekend":       "Der NYSE öffnet wieder Montag um 09:30 ET.",
-    "Market Holiday":"Heute ist ein US-Börsenfeierertag. Signale sind rein informativ.",
-    "Pre-Market":    "Handel startet um 09:30 ET. Signale können sich noch ändern.",
-    "After Hours":   "Der reguläre Handel ist beendet. Kurse und Signale sind After-Hours.",
-    "Closed":        "Markt ist aktuell geschlossen.",
-  };
 
   return (
     <div className={`rounded-xl border px-4 py-3 mb-5 flex items-center gap-3 ${style.bar}`}>
@@ -61,8 +40,8 @@ export function MarketStatusBanner() {
         <span className={`text-xs font-semibold ${style.label}`}>
           {REASON_LABEL[status.reason] ?? status.reason}
         </span>
-        <span className="text-xs text-zinc-600 ml-2">
-          {hint[status.reason]}
+        <span className="text-xs text-zinc-500 ml-2">
+          {REASON_HINT[status.reason]}
         </span>
       </div>
       <span className="text-xs text-zinc-600 font-mono shrink-0">{status.et_time} ET</span>
