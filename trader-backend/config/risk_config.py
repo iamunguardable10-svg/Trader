@@ -31,4 +31,9 @@ RISK_CONFIG = {
     # Safety
     "kill_switch_enabled":        True,
     "require_manual_confirmation": False,
+
+    # Auto-execute — automatically open a position when score >= this threshold
+    # Set AUTO_EXECUTE_ENABLED=true in env to activate; threshold can be overridden
+    # via AUTO_EXECUTE_MIN_SCORE env var.
+    "auto_execute_min_score": 75,
 }

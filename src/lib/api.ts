@@ -23,6 +23,45 @@ export async function fetchMarketStatus(): Promise<MarketStatus> {
   return apiFetch<MarketStatus>("/api/market/status");
 }
 
+export type AccountInfo = {
+  equity:       number;
+  buying_power: number;
+  cash:         number;
+  paper:        boolean;
+  status:       string;
+  connected:    boolean;
+  error?:       string;
+};
+
+/** GET /api/account */
+export async function fetchAccount(): Promise<AccountInfo> {
+  return apiFetch<AccountInfo>("/api/account");
+}
+
+export type AutoExecuteState = {
+  enabled:   boolean;
+  min_score: number;
+  broker:    string;
+};
+
+/** GET /api/auto-execute */
+export async function fetchAutoExecute(): Promise<AutoExecuteState> {
+  return apiFetch<AutoExecuteState>("/api/auto-execute");
+}
+
+/** POST /api/auto-execute */
+export async function setAutoExecute(enabled: boolean, minScore?: number): Promise<AutoExecuteState> {
+  return apiFetch<AutoExecuteState>("/api/auto-execute", {
+    method: "POST",
+    body: JSON.stringify({ enabled, min_score: minScore ?? null }),
+  });
+}
+
+/** POST /api/kill-switch */
+export async function triggerKillSwitch(): Promise<{ closed: number; auto_execute_disabled: boolean }> {
+  return apiFetch("/api/kill-switch", { method: "POST" });
+}
+
 /** GET / — lightweight health check */
 export async function checkHealth(): Promise<boolean> {
   try {
