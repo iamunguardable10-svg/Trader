@@ -11,10 +11,10 @@ import { TradeDecision } from "@/types/trade";
 
 interface Props {
   ticker: string;
-  /** Most recent LONG/SHORT signal for this ticker */
   signal: TradeDecision | null;
-  /** Current price from chart data */
   currentPrice: number | null;
+  /** Position managed externally (page polls it); if provided, skip internal fetch */
+  externalPosition?: PaperPosition | null;
   onPositionChange?: () => void;
 }
 
@@ -32,20 +32,27 @@ function PnlBadge({ value, pct }: { value: number; pct: number }) {
   );
 }
 
-export function PaperTradePanel({ ticker, signal, currentPrice, onPositionChange }: Props) {
-  const [position, setPosition]       = useState<PaperPosition | null>(null);
+export function PaperTradePanel({ ticker, signal, currentPrice, externalPosition, onPositionChange }: Props) {
+  const [internalPosition, setInternalPosition] = useState<PaperPosition | null>(null);
   const [customSL, setCustomSL]       = useState<string>("");
   const [useCustomSL, setUseCustomSL] = useState(false);
   const [loading, setLoading]         = useState(false);
   const [error, setError]             = useState<string | null>(null);
 
+  // Use external position if provided, otherwise manage internally
+  const position = externalPosition !== undefined ? externalPosition : internalPosition;
+  const applyPosition = externalPosition !== undefined
+    ? (_: PaperPosition | null) => { /* parent owns state */ }
+    : setInternalPosition;
+
   const refresh = useCallback(async () => {
+    if (externalPosition !== undefined) return; // parent manages it
     try {
-      setPosition(await fetchPositionForTicker(ticker));
+      setInternalPosition(await fetchPositionForTicker(ticker));
     } catch {
-      setPosition(null);
+      setInternalPosition(null);
     }
-  }, [ticker]);
+  }, [ticker, externalPosition]);
 
   useEffect(() => {
     refresh();
@@ -65,7 +72,7 @@ export function PaperTradePanel({ ticker, signal, currentPrice, onPositionChange
     try {
       const sl = useCustomSL && customSL ? parseFloat(customSL) : undefined;
       const pos = await openPaperTrade(signal.id, sl);
-      setPosition(pos);
+      applyPosition(pos);
       onPositionChange?.();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to open trade");
@@ -79,7 +86,7 @@ export function PaperTradePanel({ ticker, signal, currentPrice, onPositionChange
     setLoading(true); setError(null);
     try {
       await closePaperTrade(position.id, "manual");
-      setPosition(null);
+      applyPosition(null);
       onPositionChange?.();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to close trade");

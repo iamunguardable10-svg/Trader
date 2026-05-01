@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
-import { fetchChartData, fetchSignalsForTicker, OHLCVBar } from "@/lib/api";
+import { fetchChartData, fetchSignalsForTicker, fetchPositionForTicker, OHLCVBar, PaperPosition } from "@/lib/api";
 import { TradeDecision } from "@/types/trade";
 import {
   getDecisionColor, getDecisionBg, getDecisionBorder,
@@ -106,6 +106,7 @@ export default function StockPage() {
   const [tab,          setTab         ] = useState<Tab>("overview");
   const [simulate,     setSimulate    ] = useState(false);
   const [chartLoading, setChartLoading] = useState(true);
+  const [position,     setPosition    ] = useState<PaperPosition | null>(null);
 
   const loadChart = useCallback(async (p: Period) => {
     if (!API_URL || !ticker) return;
@@ -126,12 +127,23 @@ export default function StockPage() {
     } catch { /* keep empty */ }
   }, [ticker]);
 
+  const loadPosition = useCallback(async () => {
+    if (!API_URL || !ticker) return;
+    try { setPosition(await fetchPositionForTicker(ticker)); }
+    catch { setPosition(null); }
+  }, [ticker]);
+
   useEffect(() => { loadChart(period); }, [loadChart, period]);
   useEffect(() => {
     loadSignals();
     const id = setInterval(loadSignals, 30_000);
     return () => clearInterval(id);
   }, [loadSignals]);
+  useEffect(() => {
+    loadPosition();
+    const id = setInterval(loadPosition, 15_000);
+    return () => clearInterval(id);
+  }, [loadPosition]);
 
   const lastBar    = bars[bars.length - 1];
   const firstClose = bars[0]?.close ?? null;
@@ -280,6 +292,17 @@ export default function StockPage() {
                       <XAxis dataKey="time" tick={{ fill: "#71717a", fontSize: 10 }} tickLine={false} axisLine={false} interval="preserveStartEnd" />
                       <YAxis domain={["auto", "auto"]} tick={{ fill: "#71717a", fontSize: 10 }} tickLine={false} axisLine={false} tickFormatter={(v) => `$${v.toFixed(0)}`} width={48} />
                       {firstClose && <ReferenceLine y={firstClose} stroke="#52525b" strokeDasharray="4 4" strokeWidth={1} />}
+                      {/* Open position lines — always visible when a trade is open */}
+                      {position && (
+                        <>
+                          <ReferenceLine y={position.entry_price} stroke="#a78bfa" strokeWidth={1.5} strokeDasharray="6 3"
+                            label={{ value: `Entry $${position.entry_price.toFixed(2)}`, position: "insideTopRight", fontSize: 9, fill: "#a78bfa" }} />
+                          <ReferenceLine y={position.stop_loss} stroke="#f87171" strokeWidth={1.5} strokeDasharray="4 3"
+                            label={{ value: `SL $${position.stop_loss.toFixed(2)}`, position: "insideBottomRight", fontSize: 9, fill: "#f87171" }} />
+                          <ReferenceLine y={position.take_profit} stroke="#10b981" strokeWidth={1.5} strokeDasharray="4 3"
+                            label={{ value: `TP $${position.take_profit.toFixed(2)}`, position: "insideTopRight", fontSize: 9, fill: "#10b981" }} />
+                        </>
+                      )}
                       <Tooltip content={<ChartTooltip />} />
                       <Area type="monotone" dataKey="close" stroke={strokeColor} strokeWidth={2} fill={`url(#${gradId})`} dot={false} activeDot={{ r: 4, fill: strokeColor }} />
                       {signalMarkers.map(({ label, signal }, i) => (
@@ -300,14 +323,25 @@ export default function StockPage() {
                 )}
               </div>
 
-              {showMarkers && signalMarkers.length > 0 && (
-                <div className="flex items-center gap-4 mt-2 text-xs">
-                  <span className="text-emerald-400">▲ LONG</span>
-                  <span className="text-red-400">▼ SHORT</span>
-                  <span className="text-zinc-600">◼ NO TRADE</span>
-                  <span className="ml-auto text-zinc-600">{signalMarkers.length} signals on chart</span>
+              {(showMarkers && signalMarkers.length > 0) || position ? (
+                <div className="flex items-center gap-4 mt-2 text-xs flex-wrap">
+                  {showMarkers && signalMarkers.length > 0 && (
+                    <>
+                      <span className="text-emerald-400">▲ LONG</span>
+                      <span className="text-red-400">▼ SHORT</span>
+                      <span className="text-zinc-600">◼ NO TRADE</span>
+                    </>
+                  )}
+                  {position && (
+                    <>
+                      <span className="text-violet-400">— Entry</span>
+                      <span className="text-red-400">— Stop Loss</span>
+                      <span className="text-emerald-400">— Take Profit</span>
+                    </>
+                  )}
+                  {showMarkers && <span className="ml-auto text-zinc-600">{signalMarkers.length} signals on chart</span>}
                 </div>
-              )}
+              ) : null}
             </div>
 
             {/* Tab content */}
@@ -335,7 +369,8 @@ export default function StockPage() {
                   ticker={ticker}
                   signal={latestActionable}
                   currentPrice={lastClose}
-                  onPositionChange={loadSignals}
+                  externalPosition={position}
+                  onPositionChange={() => { loadSignals(); loadPosition(); }}
                 />
                 {signals.length > 0 && (
                   <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-4">
