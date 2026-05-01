@@ -10,9 +10,9 @@ STRATEGY_CONFIG = {
     "min_news_importance":  0.50,
     "min_surprise_level":   0.20,
 
-    # News age
-    "max_news_age_seconds":      180,
-    "duplicate_window_minutes":   45,
+    # News age — articles are deduplicated for 4 h so re-fetches don't re-fire
+    "max_news_age_seconds":      300,
+    "duplicate_window_minutes":  240,
 
     # Market filters — volume check relaxed for paper trading
     "min_relative_volume":       0.60,

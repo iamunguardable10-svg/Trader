@@ -305,6 +305,18 @@ def _llm_analyze(news_item: NewsItem, entity_data: EntityData) -> LLMNewsAnalysi
 # ---------------------------------------------------------------------------
 
 class LLMNewsAnalyzer:
+    def __init__(self):
+        provider = os.getenv("LLM_PROVIDER", "mock").lower()
+        if provider == "groq":
+            key = os.getenv("GROQ_API_KEY", "")
+            masked = (key[:8] + "…") if len(key) > 8 else ("set" if key else "MISSING")
+            print(f"[LLMNewsAnalyzer] Provider=groq  key={masked}")
+        elif provider == "openai":
+            key = os.getenv("OPENAI_API_KEY", "")
+            print(f"[LLMNewsAnalyzer] Provider=openai  key={'set' if key else 'MISSING'}")
+        else:
+            print("[LLMNewsAnalyzer] Provider=mock (keyword heuristic — set LLM_PROVIDER=groq for real analysis)")
+
     def analyze(self, news_item: NewsItem, entity_data: EntityData) -> LLMNewsAnalysis:
         provider = os.getenv("LLM_PROVIDER", "mock").lower()
 
@@ -314,5 +326,6 @@ class LLMNewsAnalyzer:
         try:
             return _llm_analyze(news_item, entity_data)
         except Exception as e:
-            print(f"[LLMNewsAnalyzer] LLM call failed ({e}), falling back to mock.")
+            print(f"[LLMNewsAnalyzer] LLM call failed — {type(e).__name__}: {e}")
+            print("[LLMNewsAnalyzer] Falling back to mock.")
             return _mock_analyze(news_item, entity_data)
