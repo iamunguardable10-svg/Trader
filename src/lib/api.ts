@@ -265,3 +265,24 @@ export type BacktestResponse = {
 export async function fetchBacktest(limit = 200): Promise<BacktestResponse> {
   return apiFetch<BacktestResponse>(`/api/backtest?limit=${limit}`);
 }
+
+// ── Live Readiness ────────────────────────────────────────────────────────────
+
+export type LiveCriterion = {
+  label:    string;
+  required: number;
+  actual:   number;
+  status:   "pass" | "fail" | "pending";
+};
+
+export type LiveReadiness = {
+  ready:         boolean;
+  evaluated_at:  string;
+  total_trades:  number;
+  criteria:      Record<string, LiveCriterion>;
+};
+
+/** GET /api/live-readiness */
+export async function fetchLiveReadiness(): Promise<LiveReadiness> {
+  return apiFetch<LiveReadiness>("/api/live-readiness");
+}

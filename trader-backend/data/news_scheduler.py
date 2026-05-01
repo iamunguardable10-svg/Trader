@@ -25,6 +25,7 @@ from analysis.technical_scanner import TechnicalScanner
 from analysis.macro_analyzer import analyze_macro
 from models.news import NewsItem
 from notifications.telegram import notify_signal, notify_trade_opened, notify_trade_closed
+from evaluation.portfolio_state_manager import refresh as refresh_portfolio
 
 logger = logging.getLogger(__name__)
 
@@ -165,6 +166,7 @@ class NewsScheduler:
                     f"(score={score:.1f})"
                 )
                 notify_trade_opened(position)
+                refresh_portfolio(self._broker, self._portfolio)
         except Exception as exc:
             logger.error(f"[AutoExec] Failed for {ticker}: {exc}")
 
@@ -179,13 +181,13 @@ class NewsScheduler:
             _executor, lambda: self._broker.sync_positions(mdp)
         )
         for pos in newly_closed:
-            self._portfolio.open_positions      = len(self._broker.open_positions)
-            self._portfolio.last_trade_was_loss = (pos.get("pnl") or 0) < 0
             logger.info(
                 f"[Sync] Closed {pos['ticker']} "
                 f"reason={pos['exit_reason']} pnl={pos.get('pnl', 0):+.2f}"
             )
             notify_trade_closed(pos)
+        if newly_closed:
+            refresh_portfolio(self._broker, self._portfolio)
 
     # ── RSS fallback (only used when no Alpaca key) ───────────────────────────
 

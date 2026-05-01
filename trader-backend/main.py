@@ -28,6 +28,8 @@ from data.market_data_provider import MarketDataProvider
 from data.duplicate_filter import DuplicateFilter
 from evaluation.trade_logger import TradeLogger
 from evaluation.performance_tracker import PerformanceTracker
+from evaluation.portfolio_state_manager import refresh as refresh_portfolio
+from evaluation.live_readiness import evaluate as evaluate_live_readiness
 from execution.broker_factory import get_broker
 from data.news_scheduler import NewsScheduler
 from data.market_data_provider import get_chart_data
@@ -239,8 +241,7 @@ def open_paper_trade(req: OpenTradeRequest):
     if not position:
         raise HTTPException(status_code=400, detail="Could not open position (check trade_plan)")
 
-    _portfolio.open_positions = len(paper_broker.open_positions)
-    _portfolio.trades_today  += 1
+    refresh_portfolio(paper_broker, _portfolio)
     return position
 
 
@@ -259,8 +260,7 @@ def close_paper_trade(req: CloseTradeRequest):
     if not result:
         raise HTTPException(status_code=404, detail="Open trade not found")
 
-    _portfolio.open_positions = len(paper_broker.open_positions)
-    _portfolio.last_trade_was_loss = (result.get("pnl", 0) or 0) < 0
+    refresh_portfolio(paper_broker, _portfolio)
     return result
 
 
@@ -311,8 +311,8 @@ def kill_switch():
             except Exception:
                 pass
 
-    _portfolio.open_positions     = 0
     _portfolio.kill_switch_active = True
+    refresh_portfolio(paper_broker, _portfolio)
     return {"closed": len(closed), "auto_execute_disabled": True}
 
 
@@ -401,6 +401,11 @@ def dev_score(req: DevScoreRequest):
         candidate_tickers = [req.ticker.upper()],
     )
     return algorithm.score_news_debug(news_item, _portfolio)
+
+
+@app.get("/api/live-readiness")
+def live_readiness():
+    return evaluate_live_readiness(paper_broker.closed_trades)
 
 
 @app.get("/api/backtest")
