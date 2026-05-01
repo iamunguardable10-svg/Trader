@@ -37,6 +37,24 @@ KNOWN_TICKERS = list(_TICKER_MAP.keys())
 
 
 class EntityResolver:
+    def resolve_ticker(self, ticker: str) -> EntityData | None:
+        """Directly resolve a known ticker string to EntityData."""
+        t = ticker.upper()
+        data = _TICKER_MAP.get(t, {})
+        if not data:
+            return None
+        return EntityData(
+            primary_ticker=t,
+            company_name=data.get("company_name"),
+            related_tickers=[],
+            sector=data.get("sector"),
+            industry=data.get("industry"),
+        )
+
+    def tickers_for_sector(self, sector: str) -> list[str]:
+        """Return all watched tickers that belong to the given sector."""
+        return [t for t, d in _TICKER_MAP.items() if d.get("sector") == sector]
+
     def resolve(self, news_item: NewsItem) -> EntityData:
         ticker = None
         for t in news_item.candidate_tickers:

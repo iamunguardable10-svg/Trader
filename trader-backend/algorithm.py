@@ -2,9 +2,15 @@
 TradingAlgorithm — orchestrates all modules.
 No trading logic lives anywhere else; this is the single source of truth.
 """
+from datetime import datetime
 from config.strategy_config import STRATEGY_CONFIG
-from models.news import NewsItem
+from models.news import NewsItem, EntityData
 from models.portfolio import PortfolioState
+from models.decision import LLMNewsAnalysis
+
+
+def _dummy_entity(ticker: str) -> EntityData:
+    return EntityData(primary_ticker=ticker, company_name=ticker, related_tickers=[], sector="Unknown", industry="Unknown")
 from strategy.scoring_engine import ScoringEngine
 from strategy.signal_engine import SignalEngine
 from strategy.risk_manager import RiskManager
@@ -130,6 +136,166 @@ class TradingAlgorithm:
             trade_plan=trade_plan, exit_plan=exit_plan,
         )
         if log: self.trade_logger.log_paper_signal(decision)
+        return decision
+
+    # ── technical signal entry point ────────────────────────────────────────
+
+    def process_technical_signal(
+        self,
+        ticker: str,
+        pattern,           # TechnicalPattern from technical_scanner
+        portfolio_state: PortfolioState,
+    ) -> dict:
+        """Run a pure-technical pattern through scoring + risk without news/LLM."""
+        market_data    = self.market_data_provider.get_market_data(ticker)
+        technical_data = self.technical_analyzer.calculate(ticker)
+        entity_data    = self.entity_resolver.resolve_ticker(ticker)
+        market_context = self.market_context_analyzer.get_context(entity_data.sector if entity_data else "Unknown")
+
+        # Synthesise a LLMNewsAnalysis-compatible object from the pattern
+        llm_analysis = LLMNewsAnalysis(
+            event_type       = pattern.pattern_type,
+            directional_bias = "bullish" if pattern.direction == "LONG" else "bearish",
+            impact_time_horizon = "intraday",
+            importance       = pattern.importance,
+            confidence       = pattern.confidence,
+            surprise_level   = round(min(0.90, pattern.importance * 0.85), 2),
+            reasoning_summary= pattern.description,
+            key_risks        = ["Technical signal only — no fundamental catalyst"],
+            needs_human_review = False,
+        )
+
+        # Synthetic news item (used only for logging)
+        now = datetime.utcnow()
+        news_item = NewsItem(
+            source            = "technical",
+            headline          = f"[{pattern.pattern_type.upper()}] {ticker}: {pattern.description}",
+            body              = "",
+            published_at      = now,
+            received_at       = now,
+            url               = None,
+            candidate_tickers = [ticker],
+        )
+
+        scores      = self.scoring_engine.calculate(llm_analysis, market_data, technical_data, market_context)
+        direction, strength = self.signal_engine.determine_direction(scores["final_score"])
+
+        if direction == "NO_TRADE":
+            decision = self._full_response(
+                news_item, entity_data or _dummy_entity(ticker), llm_analysis,
+                market_data, technical_data, market_context, scores,
+                direction="NO_TRADE", strength="none", trade_allowed=False,
+                blocking_reasons=["Technical score not strong enough"],
+                trade_plan=None, exit_plan=None,
+            )
+            decision["signal_source"] = "technical"
+            self.trade_logger.log_paper_signal(decision)
+            return decision
+
+        risk_check = self.risk_manager.validate(llm_analysis, market_data, portfolio_state, scores["final_score"], direction)
+        if not risk_check["allowed"]:
+            decision = self._full_response(
+                news_item, entity_data or _dummy_entity(ticker), llm_analysis,
+                market_data, technical_data, market_context, scores,
+                direction="NO_TRADE", strength="blocked", trade_allowed=False,
+                blocking_reasons=risk_check["blocking_reasons"],
+                trade_plan=None, exit_plan=None,
+            )
+            decision["signal_source"] = "technical"
+            self.trade_logger.log_paper_signal(decision)
+            return decision
+
+        trade_plan = self.exit_manager.create_trade_plan(direction, market_data, portfolio_state.account_equity, self.position_sizer)
+        exit_plan  = self.exit_manager.create_exit_plan()
+
+        decision = self._full_response(
+            news_item, entity_data or _dummy_entity(ticker), llm_analysis,
+            market_data, technical_data, market_context, scores,
+            direction=direction, strength=strength, trade_allowed=True, blocking_reasons=[],
+            trade_plan=trade_plan, exit_plan=exit_plan,
+        )
+        decision["signal_source"] = "technical"
+        self.trade_logger.log_paper_signal(decision)
+        return decision
+
+    # ── macro signal entry point ────────────────────────────────────────────
+
+    def process_macro_signal(
+        self,
+        ticker: str,
+        macro_impact,       # MacroImpact from macro_analyzer
+        macro_headline: str,
+        macro_url: str | None,
+        portfolio_state: PortfolioState,
+    ) -> dict:
+        """Apply a Groq-assessed macro sector impact to a specific ticker."""
+        market_data    = self.market_data_provider.get_market_data(ticker)
+        technical_data = self.technical_analyzer.calculate(ticker)
+        entity_data    = self.entity_resolver.resolve_ticker(ticker)
+        market_context = self.market_context_analyzer.get_context(macro_impact.sector)
+
+        llm_analysis = LLMNewsAnalysis(
+            event_type       = "macro_event",
+            directional_bias = macro_impact.direction,
+            impact_time_horizon = "intraday",
+            importance       = macro_impact.importance,
+            confidence       = macro_impact.confidence,
+            surprise_level   = round(macro_impact.importance * 0.75, 2),
+            reasoning_summary= macro_impact.reasoning,
+            key_risks        = ["Macro/geopolitical signal — broader market forces"],
+            needs_human_review = macro_impact.importance > 0.85,
+        )
+
+        now = datetime.utcnow()
+        news_item = NewsItem(
+            source            = "macro",
+            headline          = macro_headline,
+            body              = "",
+            published_at      = now,
+            received_at       = now,
+            url               = macro_url,
+            candidate_tickers = [ticker],
+        )
+
+        scores      = self.scoring_engine.calculate(llm_analysis, market_data, technical_data, market_context)
+        direction, strength = self.signal_engine.determine_direction(scores["final_score"])
+
+        if direction == "NO_TRADE":
+            decision = self._full_response(
+                news_item, entity_data or _dummy_entity(ticker), llm_analysis,
+                market_data, technical_data, market_context, scores,
+                direction="NO_TRADE", strength="none", trade_allowed=False,
+                blocking_reasons=["Macro impact score not strong enough for this ticker"],
+                trade_plan=None, exit_plan=None,
+            )
+            decision["signal_source"] = "macro"
+            self.trade_logger.log_paper_signal(decision)
+            return decision
+
+        risk_check = self.risk_manager.validate(llm_analysis, market_data, portfolio_state, scores["final_score"], direction)
+        if not risk_check["allowed"]:
+            decision = self._full_response(
+                news_item, entity_data or _dummy_entity(ticker), llm_analysis,
+                market_data, technical_data, market_context, scores,
+                direction="NO_TRADE", strength="blocked", trade_allowed=False,
+                blocking_reasons=risk_check["blocking_reasons"],
+                trade_plan=None, exit_plan=None,
+            )
+            decision["signal_source"] = "macro"
+            self.trade_logger.log_paper_signal(decision)
+            return decision
+
+        trade_plan = self.exit_manager.create_trade_plan(direction, market_data, portfolio_state.account_equity, self.position_sizer)
+        exit_plan  = self.exit_manager.create_exit_plan()
+
+        decision = self._full_response(
+            news_item, entity_data or _dummy_entity(ticker), llm_analysis,
+            market_data, technical_data, market_context, scores,
+            direction=direction, strength=strength, trade_allowed=True, blocking_reasons=[],
+            trade_plan=trade_plan, exit_plan=exit_plan,
+        )
+        decision["signal_source"] = "macro"
+        self.trade_logger.log_paper_signal(decision)
         return decision
 
     # ── response builders ───────────────────────────────────────────────────

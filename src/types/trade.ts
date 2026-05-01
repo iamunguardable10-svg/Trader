@@ -5,6 +5,8 @@ export type RiskMode = "risk_on" | "risk_off" | "neutral";
 export type AppMode = "paper" | "live" | "backtest";
 export type DirectionalBias = "bullish" | "bearish" | "neutral";
 
+export type SignalSource = "news" | "technical" | "macro";
+
 export type TradeDecision = {
   id?: string;
   logged_at?: string;
@@ -12,6 +14,7 @@ export type TradeDecision = {
   ticker: string | null;
   company: string | null;
   sector: string | null;
+  signal_source?: SignalSource;
   decision: Decision;
   strength: Strength;
   trade_allowed: boolean;

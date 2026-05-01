@@ -2,8 +2,19 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { TradeDecision } from "@/types/trade";
+import { TradeDecision, SignalSource } from "@/types/trade";
 import { getDecisionColor, getFinalScoreColor, formatDate } from "@/lib/utils";
+
+function SourceBadge({ source }: { source?: SignalSource }) {
+  if (!source || source === "news") return null;
+  if (source === "technical") return (
+    <span className="rounded bg-blue-500/20 border border-blue-500/30 px-1.5 py-0.5 text-xs text-blue-400 font-medium">⚡ Tech</span>
+  );
+  if (source === "macro") return (
+    <span className="rounded bg-amber-500/20 border border-amber-500/30 px-1.5 py-0.5 text-xs text-amber-400 font-medium">🌐 Macro</span>
+  );
+  return null;
+}
 
 type Filter = "ALL" | "LONG" | "SHORT" | "NO_TRADE" | "WATCHLIST";
 type SortKey = "score" | "time" | "confidence";
@@ -121,6 +132,7 @@ export function SignalsTable({ signals, watchlistTickers }: Props) {
                     {s.final_score > 0 ? "+" : ""}{s.final_score.toFixed(1)}
                   </span>
                   {s.trade_allowed && <span className="text-xs text-emerald-500">✓</span>}
+                  <SourceBadge source={s.signal_source} />
                 </div>
                 <p className="text-xs text-zinc-400 truncate">{s.news.headline}</p>
                 <p className="text-xs text-zinc-600 mt-0.5">{time}</p>
@@ -169,9 +181,12 @@ export function SignalsTable({ signals, watchlistTickers }: Props) {
                     {ICON[s.decision]} {s.decision}
                   </td>
                   <td className="px-4 py-3 max-w-xs">
-                    <Link href={`/stock/${s.ticker ?? ""}`} className="text-zinc-400 hover:text-zinc-200 transition-colors truncate block">
-                      {s.news.headline}
-                    </Link>
+                    <div className="flex items-center gap-2">
+                      <SourceBadge source={s.signal_source} />
+                      <Link href={`/stock/${s.ticker ?? ""}`} className="text-zinc-400 hover:text-zinc-200 transition-colors truncate block">
+                        {s.news.headline}
+                      </Link>
+                    </div>
                   </td>
                   <td className="px-4 py-3 text-zinc-500 whitespace-nowrap">{time}</td>
                   <td className="px-4 py-3"><ConfidenceBar value={s.confidence} /></td>
