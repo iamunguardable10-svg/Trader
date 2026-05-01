@@ -34,10 +34,11 @@ function PnlBadge({ value, pct }: { value: number; pct: number }) {
 
 export function PaperTradePanel({ ticker, signal, currentPrice, externalPosition, onPositionChange }: Props) {
   const [internalPosition, setInternalPosition] = useState<PaperPosition | null>(null);
-  const [customSL, setCustomSL]       = useState<string>("");
+  const [customSL,   setCustomSL  ] = useState<string>("");
   const [useCustomSL, setUseCustomSL] = useState(false);
-  const [loading, setLoading]         = useState(false);
-  const [error, setError]             = useState<string | null>(null);
+  const [customSize, setCustomSize] = useState<string>("");
+  const [loading, setLoading]       = useState(false);
+  const [error, setError]           = useState<string | null>(null);
 
   // Use external position if provided, otherwise manage internally
   const position = externalPosition !== undefined ? externalPosition : internalPosition;
@@ -70,8 +71,9 @@ export function PaperTradePanel({ ticker, signal, currentPrice, externalPosition
     if (!signal?.id) return;
     setLoading(true); setError(null);
     try {
-      const sl = useCustomSL && customSL ? parseFloat(customSL) : undefined;
-      const pos = await openPaperTrade(signal.id, sl);
+      const sl   = useCustomSL && customSL ? parseFloat(customSL) : undefined;
+      const size = customSize ? Math.max(1, Math.round(parseFloat(customSize))) : undefined;
+      const pos  = await openPaperTrade(signal.id, sl, size);
       applyPosition(pos);
       onPositionChange?.();
     } catch (e) {
@@ -187,7 +189,7 @@ export function PaperTradePanel({ ticker, signal, currentPrice, externalPosition
           <p className="font-mono text-zinc-200">${entryPrice?.toFixed(2) ?? "—"}</p>
         </div>
         <div>
-          <p className="text-zinc-600 mb-0.5">Size</p>
+          <p className="text-zinc-600 mb-0.5">Algo Size</p>
           <p className="font-mono text-zinc-200">{posSize} shares</p>
         </div>
         <div>
@@ -200,15 +202,39 @@ export function PaperTradePanel({ ticker, signal, currentPrice, externalPosition
         </div>
       </div>
 
+      {/* Position size override */}
       <div>
-        <label className="flex items-center gap-2 text-xs text-zinc-500 cursor-pointer select-none mb-2">
+        <label className="text-xs text-zinc-500 block mb-1.5">
+          Position size <span className="text-zinc-600">(shares)</span>
+        </label>
+        <div className="flex items-center gap-2">
+          <input
+            type="number"
+            min="1"
+            step="1"
+            value={customSize}
+            onChange={(e) => setCustomSize(e.target.value)}
+            placeholder={String(posSize)}
+            className="flex-1 rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 placeholder-zinc-600 focus:outline-none focus:border-zinc-500"
+          />
+          {entryPrice && customSize && (
+            <span className="text-xs text-zinc-500 whitespace-nowrap">
+              ≈ ${(parseFloat(customSize) * entryPrice).toLocaleString(undefined, { maximumFractionDigits: 0 })}
+            </span>
+          )}
+        </div>
+      </div>
+
+      {/* Custom stop loss */}
+      <div>
+        <label className="flex items-center gap-2 text-xs text-zinc-500 cursor-pointer select-none mb-1.5">
           <input
             type="checkbox"
             checked={useCustomSL}
             onChange={(e) => setUseCustomSL(e.target.checked)}
             className="accent-emerald-500"
           />
-          Use custom stop loss
+          Custom stop loss
         </label>
         {useCustomSL && (
           <input
@@ -216,7 +242,7 @@ export function PaperTradePanel({ ticker, signal, currentPrice, externalPosition
             step="0.01"
             value={customSL}
             onChange={(e) => setCustomSL(e.target.value)}
-            placeholder={suggestedSL?.toFixed(2) ?? "Enter stop loss price"}
+            placeholder={suggestedSL?.toFixed(2) ?? "Stop loss price"}
             className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 placeholder-zinc-600 focus:outline-none focus:border-zinc-500"
           />
         )}

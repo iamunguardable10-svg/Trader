@@ -90,10 +90,18 @@ export async function fetchPositionForTicker(ticker: string): Promise<PaperPosit
 }
 
 /** POST /api/paper-trade/open */
-export async function openPaperTrade(decisionId: string, customStopLoss?: number): Promise<PaperPosition> {
+export async function openPaperTrade(
+  decisionId: string,
+  customStopLoss?: number,
+  customPositionSize?: number,
+): Promise<PaperPosition> {
   return apiFetch("/api/paper-trade/open", {
     method: "POST",
-    body: JSON.stringify({ decision_id: decisionId, custom_stop_loss: customStopLoss ?? null }),
+    body: JSON.stringify({
+      decision_id:          decisionId,
+      custom_stop_loss:     customStopLoss     ?? null,
+      custom_position_size: customPositionSize ?? null,
+    }),
   });
 }
 

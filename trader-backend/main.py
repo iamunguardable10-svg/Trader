@@ -98,8 +98,9 @@ class AnalyzeNewsRequest(BaseModel):
     candidate_tickers: List[str] = []
 
 class OpenTradeRequest(BaseModel):
-    decision_id:      str
-    custom_stop_loss: Optional[float] = None
+    decision_id:       str
+    custom_stop_loss:  Optional[float] = None
+    custom_position_size: Optional[int] = None
 
 class CloseTradeRequest(BaseModel):
     trade_id:    str
@@ -228,11 +229,14 @@ def open_paper_trade(req: OpenTradeRequest):
     if not decision.get("trade_allowed"):
         raise HTTPException(status_code=400, detail="Trade not allowed for this decision")
 
-    # Allow custom stop loss override
-    if req.custom_stop_loss is not None and decision.get("trade_plan"):
+    # Allow custom overrides
+    if (req.custom_stop_loss is not None or req.custom_position_size is not None) and decision.get("trade_plan"):
         decision = dict(decision)
         decision["trade_plan"] = dict(decision["trade_plan"])
-        decision["trade_plan"]["stop_loss"] = req.custom_stop_loss
+        if req.custom_stop_loss is not None:
+            decision["trade_plan"]["stop_loss"] = req.custom_stop_loss
+        if req.custom_position_size is not None and req.custom_position_size > 0:
+            decision["trade_plan"]["position_size"] = req.custom_position_size
 
     position = paper_broker.open_position(decision)
     if not position:
