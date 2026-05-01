@@ -114,6 +114,13 @@ def root():
     return {"status": "ok", "service": "trading-signal-backend"}
 
 
+@app.get("/api/market/status")
+def market_status():
+    """Return current NYSE market status (open/closed, session, ET time)."""
+    from data.market_hours import get_market_status
+    return get_market_status()
+
+
 @app.get("/api/latest-decision")
 def get_latest_decision():
     """Return the most recent algorithm decision."""

@@ -16,6 +16,7 @@ import { NewsCard } from "@/components/dashboard/NewsCard";
 import { TradePlanPanel } from "@/components/dashboard/TradePlanPanel";
 import { ExitPlanPanel } from "@/components/dashboard/ExitPlanPanel";
 import { PaperTradePanel } from "@/components/dashboard/PaperTradePanel";
+import { MarketStatusBanner } from "@/components/dashboard/MarketStatusBanner";
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, ReferenceLine,
@@ -217,6 +218,9 @@ export default function StockPage() {
       </div>
 
       <div className="flex-1 overflow-y-auto">
+        <div className="px-6 pt-4">
+          <MarketStatusBanner />
+        </div>
         <div className="grid grid-cols-1 lg:grid-cols-[1fr_280px] gap-0 h-full">
 
           {/* ── Main column ── */}

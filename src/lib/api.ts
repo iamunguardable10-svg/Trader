@@ -11,6 +11,18 @@ async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
   return res.json() as Promise<T>;
 }
 
+export type MarketStatus = {
+  is_open: boolean;
+  reason: string;   // "Open" | "Pre-Market" | "After Hours" | "Weekend" | "Market Holiday"
+  session: string;  // "regular" | "pre" | "after" | "closed"
+  et_time: string;  // "09:45"
+};
+
+/** GET /api/market/status */
+export async function fetchMarketStatus(): Promise<MarketStatus> {
+  return apiFetch<MarketStatus>("/api/market/status");
+}
+
 /** GET / — lightweight health check */
 export async function checkHealth(): Promise<boolean> {
   try {

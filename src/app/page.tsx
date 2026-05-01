@@ -4,6 +4,7 @@ import { useData } from "@/contexts/DataContext";
 import { OpportunityCards } from "@/components/dashboard/OpportunityCards";
 import { SignalsTable } from "@/components/dashboard/SignalsTable";
 import { PortfolioPanel } from "@/components/dashboard/PortfolioPanel";
+import { MarketStatusBanner } from "@/components/dashboard/MarketStatusBanner";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL;
 
@@ -25,6 +26,7 @@ export default function DashboardPage() {
         </p>
       </div>
 
+      <MarketStatusBanner />
       <PortfolioPanel />
       <OpportunityCards signals={signals} />
       <SignalsTable signals={signals} watchlistTickers={watchlistTickers} />
